@@ -52,7 +52,7 @@ export default function RootLayout({
             <SignedOut>
               <SignInButton />
               <SignUpButton>
-                <button className="bg-rose-500 text-white p-2 rounded">
+                <button className="bg-rose-600 text-white p-2 rounded">
                   Sign Up
                 </button>
               </SignUpButton>
