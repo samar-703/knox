@@ -15,7 +15,6 @@ import {dark} from '@clerk/themes'
 
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import "./globals.css";
-import { Sign } from "crypto";
 
 const inter = Inter({
   variable: "--font-inter",
