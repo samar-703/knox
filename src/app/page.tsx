@@ -1,13 +1,13 @@
 import { Button } from "@/components/ui/button";
 
-const X = () =>{
+const something = () =>{
   return (
     <div>
       <Button>
-        Click me
+        Click me daddy
         </Button>
     </div>
   );
 };
 
-export default X;
+export default something;
