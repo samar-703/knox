@@ -54,8 +54,9 @@ export const useEditorStore = create()((set, get) => ({
       set({ tabs });
       return;
     }
-    //Case 2: File is already open - just set as active
 
+    
+    //Case 2: File is already open - just set as active
     if (!isOpen && pinned) {
       tabs.set(projectId, {
         ...state,
@@ -65,5 +66,14 @@ export const useEditorStore = create()((set, get) => ({
       set({ tabs });
       return;
     }
-  },
+
+    // Case 3: File is already open - just activate it(and pin if double clicked)
+    const shouldPin = pinned || previewTabId === fileId;
+    tabs.set(projectId, {
+      ...state,
+      activeTabId: fileId,
+      previewTabId: shouldPin ? null : previewTabId,
+    });
+    set ({ tabs });
+  }
 }));
