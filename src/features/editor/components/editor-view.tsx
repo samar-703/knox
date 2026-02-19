@@ -30,7 +30,7 @@ export const EditorView = ({projectId} : {projectId: Id<"projects">}) => {
           </div>
         )}
         {activeFile && (
-          <CodeEditor />
+          <CodeEditor fileName={activeFile.name}/>
         )}
       </div>
     </div>
