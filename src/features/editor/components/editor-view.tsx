@@ -4,6 +4,7 @@ import { useEditor } from "../hooks/use-editor";
 import { FileBreadcrumbs } from "./file-breadcrumbs";
 import { useFile } from "@/features/projects/hooks/use-files";
 import Image from "next/image";
+import { CodeEditor } from "./code-editor";
 
 export const EditorView = ({projectId} : {projectId: Id<"projects">}) => {
 
@@ -24,9 +25,12 @@ export const EditorView = ({projectId} : {projectId: Id<"projects">}) => {
               alt="knox"
               width={50}
               height={50}
-              className="opacity-25"
+              className="opacity-60"
             />
           </div>
+        )}
+        {activeFile && (
+          <CodeEditor />
         )}
       </div>
     </div>
