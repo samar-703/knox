@@ -33,6 +33,7 @@ export const CodeEditor = ({ fileName, initialValue="", onChange }: Props) => {
         customTheme,
         customSetup,
         languageExtension,
+        suggestion(fileName),
         keymap.of([indentWithTab]),
         minimap(),
         indentationMarkers(),

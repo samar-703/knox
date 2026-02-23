@@ -7,7 +7,8 @@ import {
   WidgetType,
   keymap,
 } from "@codemirror/view"
-import { StateField, StateEffect } from "@codemirror/state"
+import { StateField, StateEffect, Transaction } from "@codemirror/state"
+import { effect } from "zod/v3";
 
 // StateEffect: A way to send "messages" to update state.
 const setSuggestionEffect = StateEffect.define<string | null>();
@@ -33,6 +34,25 @@ const suggestionState = StateField.define<string | null>({
   },
 });
 
+const renderPlugin = ViewPlugin.fromClass (
+  class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = this.build(view);
+    }
+
+    update(update: ViewUpdate) {
+      // rebuild decoration if cursor is moved or suggestions changed
+      const suggestionChanged = update.transactions.some( (transaction) =>
+        transaction.effects.some((effect) => effect.is
+        (setSuggestionEffect))
+      );
+    }
+  }
+)
+
 export const suggestion = (fileName: string) => [
   suggestionState, // our state storage
+  renderPlugin, // renders the ghost text
 ]
