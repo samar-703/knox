@@ -8,7 +8,6 @@ import {
   keymap,
 } from "@codemirror/view"
 import { StateField, StateEffect, Transaction } from "@codemirror/state"
-import { effect } from "zod/v3";
 
 // StateEffect: A way to send "messages" to update state.
 const setSuggestionEffect = StateEffect.define<string | null>();
