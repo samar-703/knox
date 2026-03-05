@@ -4,6 +4,7 @@ import { auth } from '@clerk/nextjs/server';
 import { convex } from '@/lib/convex-client';
 import { api } from '../../../../convex/_generated/api';
 import { Id } from '../../../../convex/_generated/dataModel';
+import { inngest } from '@/inngest/client';
 
 const requestSchema = z.object({
   conversationId: z.string(),
@@ -36,6 +37,40 @@ export async function POST(request: Request) {
   }
 
   const projectId = conversation.projectId;
-  // todo check for processing messages
-  
+
+  //* todo check for processing messages
+  // create a user message
+
+  await convex.mutation(api.system.createMessage, {
+    internalKey,
+    conversationId: conversationId as Id<"conversations">,
+    projectId,
+    role: "user",
+    content: message
+  });
+
+  // assistant message placeholder with processing status
+  const assistantMessageId = await convex.mutation(api.system.createMessage, {
+    internalKey,
+    conversationId: conversationId as Id<"conversations">,
+    projectId,
+    role: "assistant",
+    content: "",
+    status: "processing",
+  });
+
+  //* todo : Invoke inngest to process the message
+
+  const event = await inngest.send({
+    name: "message/sent",
+    data: {
+      messageId: assistantMessageId,
+    },
+  })
+
+  return NextResponse.json({ 
+    success: true,
+    eventId: event.ids[0],
+    messageId: assistantMessageId,
+  });
 };
