@@ -82,7 +82,7 @@ const generatePayload = (view: EditorView, fileName: string) => {
     code,
     currentLine: currentLine.text,
     previousLines: previousLines.join("\n"),
-    textbeforeCursor: currentLine.text.slice(0, cursorInLine),
+    textBeforeCursor: currentLine.text.slice(0, cursorInLine),
     textAfterCursor: currentLine.text.slice(cursorInLine),
     nextLines: nextLines.join("\n"),
     lineNumber: currentLine.number,
