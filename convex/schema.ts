@@ -50,9 +50,9 @@ export default defineSchema({
     content: v.string(),
     status: v.optional(
       v.union(
-        v.literal("pending"),
+        v.literal("processing"),
         v.literal("completed"),
-        v.literal("failed"),
+        v.literal("cancelled"),
       )
     ),
   })
