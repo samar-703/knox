@@ -50,10 +50,27 @@ export const createMessage = mutation({
       status: args.status,
     }); 
 
+    // update conversation's updatedAt
     await ctx.db.patch(args.conversationId, {
       updatedAt: Date.now(),
     });
 
     return messageId;
+  },
+});
+
+export const updateMessageContent = mutation({
+  args: {
+    internalKey: v.string(),
+    messageId: v.id("messages"),
+    content: v.string(),
+  },
+  handler: async ( ctx, args ) => {
+    validateInternalKey(args.internalKey);
+
+    await ctx.db.patch(args.messageId, {
+      content: args.content,
+      status: "completed" as const,
+    });
   },
 });
