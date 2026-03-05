@@ -252,19 +252,21 @@ export const Persona: FC<PersonaProps> = memo(
     const speakingInput = useStateMachineInput(rive, stateMachine, "speaking");
     const asleepInput = useStateMachineInput(rive, stateMachine, "asleep");
 
+    const setInputValue = (
+      input: { value: boolean | number } | null | undefined,
+      isActive: boolean
+    ) => {
+      if (!input) {
+        return;
+      }
+      input.value = isActive;
+    };
+
     useEffect(() => {
-      if (listeningInput) {
-        listeningInput.value = state === "listening";
-      }
-      if (thinkingInput) {
-        thinkingInput.value = state === "thinking";
-      }
-      if (speakingInput) {
-        speakingInput.value = state === "speaking";
-      }
-      if (asleepInput) {
-        asleepInput.value = state === "asleep";
-      }
+      setInputValue(listeningInput, state === "listening");
+      setInputValue(thinkingInput, state === "thinking");
+      setInputValue(speakingInput, state === "speaking");
+      setInputValue(asleepInput, state === "asleep");
     }, [state, listeningInput, thinkingInput, speakingInput, asleepInput]);
 
     const Component = source.hasModel ? PersonaWithModel : PersonaWithoutModel;

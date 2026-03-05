@@ -32,10 +32,8 @@ import { createHighlighter } from "shiki";
 
 // Shiki uses bitflags for font styles: 1=italic, 2=bold, 4=underline
 // biome-ignore lint/suspicious/noBitwiseOperators: shiki bitflag check
-// eslint-disable-next-line no-bitwise -- shiki bitflag check
 const isItalic = (fontStyle: number | undefined) => fontStyle && fontStyle & 1;
 // biome-ignore lint/suspicious/noBitwiseOperators: shiki bitflag check
-// eslint-disable-next-line no-bitwise -- shiki bitflag check
 // oxlint-disable-next-line eslint(no-bitwise)
 const isBold = (fontStyle: number | undefined) => fontStyle && fontStyle & 2;
 const isUnderline = (fontStyle: number | undefined) =>
@@ -388,28 +386,11 @@ export const CodeBlockContent = ({
   // Memoized raw tokens for immediate display
   const rawTokens = useMemo(() => createRawTokens(code), [code]);
 
-  // Try to get cached result synchronously, otherwise use raw tokens
-  const [tokenized, setTokenized] = useState<TokenizedCode>(
-    () => highlightCode(code, language) ?? rawTokens
+  // Try to get cached highlighted result synchronously, otherwise use raw tokens.
+  const tokenized = useMemo(
+    () => highlightCode(code, language) ?? rawTokens,
+    [code, language, rawTokens]
   );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    // Reset to raw tokens when code changes (shows current code, not stale tokens)
-    setTokenized(highlightCode(code, language) ?? rawTokens);
-
-    // Subscribe to async highlighting result
-    highlightCode(code, language, (result) => {
-      if (!cancelled) {
-        setTokenized(result);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [code, language, rawTokens]);
 
   return (
     <div className="relative overflow-auto">

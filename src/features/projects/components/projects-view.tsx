@@ -1,6 +1,7 @@
 "use client";
 
 import { Poppins } from "next/font/google";
+import Image from "next/image";
 import { SparkleIcon } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 
@@ -57,7 +58,13 @@ export const ProjectsView = () => {
           <div className="flex justify-between gap-4 w-full items-center">
 
             <div className="flex items-center gap-2 w-full group/logo">
-              <img src="/logo.svg" alt="knox" className="size-[32px] md:size-[46px]"/>
+              <Image
+                src="/logo.svg"
+                alt="knox"
+                width={46}
+                height={46}
+                className="size-[32px] md:size-[46px]"
+              />
               <h1 className={cn(
                 "text-4xl md:text-5xl font-semibold",
                 font.className,

@@ -1,5 +1,3 @@
-/* eslint-disable react-hooks/rules-of-hooks */
-
 import { useMutation, useQuery } from "convex/react";
 
 import { api } from "../../../../convex/_generated/api";
@@ -29,13 +27,13 @@ export const useCreateProject = () => {
       const existingProjects = localStore.getQuery(api.projects.get);
 
       if (existingProjects !== undefined) {
-        const now = Date.now();
+        const optimisticTime = (existingProjects[0]?.updatedAt ?? 0) + 1;
         const newProject = {
           _id: crypto.randomUUID() as Id<"projects">,
-          _creationTime: now,
+          _creationTime: optimisticTime,
           name: args.name,
           ownerId: "anonymous",
-          updatedAt: now,
+          updatedAt: optimisticTime,
         };
         localStore.setQuery(api.projects.get, {}, [
           newProject,
@@ -52,13 +50,14 @@ export const useRenameProject = () => {
       const existingProject = localStore.getQuery(api.projects.getById, { id: args.id} );
 
       if (existingProject !== undefined && existingProject !== null) {
+        const optimisticTime = (existingProject.updatedAt ?? 0) + 1;
         localStore.setQuery(
           api.projects.getById,
           { id: args.id },
           {
             ...existingProject,
             name: args.name,
-            updatedAt: Date.now()
+            updatedAt: optimisticTime,
           }
         );
       }
@@ -70,8 +69,9 @@ export const useRenameProject = () => {
           api.projects.get,
           {},
           existingProjects.map((project) => {
+            const optimisticTime = (project.updatedAt ?? 0) + 1;
             return project._id === args.id
-              ? { ...project, name: args.name, updatedAt:Date.now() }
+              ? { ...project, name: args.name, updatedAt: optimisticTime }
               : project;
           })
         );

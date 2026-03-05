@@ -155,14 +155,14 @@ export const Tree = ({
               onSubmit={handleCreate}
               onCancel={() => setCreating(null)}
             />
-            {folderContents?.map((subItem) => {
+            {folderContents?.map((subItem) => (
               <Tree
                 key={subItem._id}
                 item={subItem}
                 level={level+1}
                 projectId={projectId}
               />
-            })}
+            ))}
           </>
         )}
       </>
@@ -183,14 +183,14 @@ export const Tree = ({
         {isOpen && (
           <>
             {folderContents === undefined && <LoadingRow level={level+1} />}
-            {folderContents?.map((subItem) => {
+            {folderContents?.map((subItem) => (
               <Tree
                 key={subItem._id}
                 item={subItem}
                 level={level+1}
                 projectId={projectId}
               />
-            })}
+            ))}
           </>
         )}
       </>

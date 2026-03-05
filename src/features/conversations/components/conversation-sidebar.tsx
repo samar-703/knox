@@ -5,7 +5,8 @@ import {
   CopyIcon, 
   HistoryIcon, 
   LoaderIcon, 
-  PlusIcon
+  PlusIcon,
+  XIcon,
 } from "lucide-react";
 
 import {
@@ -66,6 +67,11 @@ export const ConversationSidebar = ({
 
   const activeConversation = useConversation(activeConversationId);
   const conversationMessages = useMessages(activeConversationId);
+  const activeProcessingMessageId = conversationMessages
+    ?.slice()
+    .reverse()
+    .find((message) => message.status === "processing" && message.role === "assistant")
+    ?._id;
 
   // Check if any message is currently processing
   const isProcessing = conversationMessages?.some(
@@ -73,9 +79,13 @@ export const ConversationSidebar = ({
   );
 
   const handleCancel = async () => {
+    if (!activeProcessingMessageId) {
+      return;
+    }
+
     try {
       await ky.post("/api/messages/cancel", {
-        json: { projectId },
+        json: { messageId: activeProcessingMessageId },
       });
     } catch {
       toast.error("Unable to cancel request");
@@ -130,7 +140,40 @@ export const ConversationSidebar = ({
 
   return (
     <>
-      <div className="flex flex-col h-full bg-sidebar">
+      <div className="relative flex flex-col h-full bg-sidebar">
+        {pastConversationsOpen && (
+          <div className="absolute inset-0 z-20 bg-sidebar/95 backdrop-blur-sm p-3 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Past conversations</span>
+              <Button
+                size="icon-xs"
+                variant="highlight"
+                onClick={() => setPastConversationsOpen(false)}
+              >
+                <XIcon className="size-3.5" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto flex flex-col gap-1">
+              {conversations?.map((conversation) => (
+                <button
+                  key={conversation._id}
+                  onClick={() => {
+                    setSelectedConversationId(conversation._id);
+                    setPastConversationsOpen(false);
+                  }}
+                  className="text-left px-2 py-1.5 rounded-sm hover:bg-accent/40 text-sm truncate"
+                >
+                  {conversation.title}
+                </button>
+              ))}
+              {conversations?.length === 0 && (
+                <span className="text-xs text-muted-foreground">
+                  No previous conversations yet.
+                </span>
+              )}
+            </div>
+          </div>
+        )}
         <div className="h-8.75 flex items-center justify-between border-b">
           <div className="text-sm truncate pl-3">
             {activeConversation?.title ?? DEFAULT_CONVERSATION_TITLE}

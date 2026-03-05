@@ -41,7 +41,7 @@ export const useEditorStore = create<EditorStore>()((set, get) => ({
     const { openTabs, previewTabId } = state;
     const isOpen = openTabs.includes(fileId);
 
-    // Case 1: Opening as preview - replace existing preview or add new
+    // Case 1: Opening unopened file as preview or pinned tab
     if (!isOpen) {
       const newTabs = previewTabId
         ? openTabs.map((id) => (id === previewTabId ? fileId : id))
@@ -50,19 +50,7 @@ export const useEditorStore = create<EditorStore>()((set, get) => ({
       tabs.set(projectId, {
         openTabs: newTabs,
         activeTabId: fileId,
-        previewTabId: fileId,
-      });
-      set({ tabs });
-      return;
-    }
-
-    
-    //Case 2: File is already open - just set as active
-    if (!isOpen && pinned) {
-      tabs.set(projectId, {
-        ...state,
-        openTabs: [...openTabs, fileId],
-        activeTabId: fileId,
+        previewTabId: pinned ? null : fileId,
       });
       set({ tabs });
       return;

@@ -5,10 +5,16 @@ import { convex } from '@/lib/convex-client';
 import { api } from '../../../../convex/_generated/api';
 import { Id } from '../../../../convex/_generated/dataModel';
 import { inngest } from '@/inngest/client';
+import { createRateLimiter } from '@/lib/rate-limit';
 
 const requestSchema = z.object({
   conversationId: z.string(),
-  message: z.string(),
+  message: z.string().min(1).max(8_000),
+});
+
+const isRateLimited = createRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 20,
 });
 
 export async function POST(request: Request) {
@@ -18,18 +24,37 @@ export async function POST(request: Request) {
     return NextResponse.json({error: "Unauthorized"}, { status: 401 });
   }
 
+  if (isRateLimited(userId)) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded. Try again in a minute." },
+      { status: 429 },
+    );
+  }
+
   const internalKey = process.env.CONVEX_INTERNAL_KEY;
 
   if (!internalKey) {
     return NextResponse.json({error: "Internal key not configured"}, { status: 500 });
   }
 
-  const body = await request.json();
-  const { conversationId, message } = requestSchema.parse(body);
+  const body = await request.json().catch(() => null);
+  const parsed = requestSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid request payload" }, { status: 400 });
+  }
 
-  const conversation = await convex.query(api.system.getConversationById, {
+  const { conversationId, message } = parsed.data;
+  const trimmedMessage = message.trim();
+  if (!trimmedMessage) {
+    return NextResponse.json({ error: "Message cannot be empty" }, { status: 400 });
+  }
+
+  const conversationIdTyped = conversationId as Id<"conversations">;
+
+  const conversation = await convex.query(api.system.getConversationByIdForUser, {
     internalKey,
-    conversationId: conversationId as Id<"conversations">,
+    userId,
+    conversationId: conversationIdTyped,
   });
 
   if (!conversation) {
@@ -38,33 +63,44 @@ export async function POST(request: Request) {
 
   const projectId = conversation.projectId;
 
-  //* todo check for processing messages
-  // create a user message
+  const hasProcessingMessage = await convex.query(
+    api.system.hasProcessingMessageForUser,
+    {
+      internalKey,
+      userId,
+      conversationId: conversationIdTyped,
+    },
+  );
+  if (hasProcessingMessage) {
+    return NextResponse.json(
+      { error: "A message is already being processed for this conversation." },
+      { status: 409 },
+    );
+  }
 
   await convex.mutation(api.system.createMessage, {
     internalKey,
-    conversationId: conversationId as Id<"conversations">,
+    conversationId: conversationIdTyped,
     projectId,
     role: "user",
-    content: message
+    content: trimmedMessage
   });
 
-  // assistant message placeholder with processing status
   const assistantMessageId = await convex.mutation(api.system.createMessage, {
     internalKey,
-    conversationId: conversationId as Id<"conversations">,
+    conversationId: conversationIdTyped,
     projectId,
     role: "assistant",
     content: "",
     status: "processing",
   });
 
-  //* todo : Invoke inngest to process the message
-
   const event = await inngest.send({
     name: "message/sent",
     data: {
       messageId: assistantMessageId,
+      conversationId: conversationIdTyped,
+      userId,
     },
   })
 

@@ -3,12 +3,29 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { google } from "@ai-sdk/google";
 import { auth } from "@clerk/nextjs/server";
+import { createRateLimiter } from "@/lib/rate-limit";
 
 
 const suggestionSchema = z.object ({
   suggestion: z
     .string()
     .describe("The code to insert at cursor or empty string if not completion needed"),
+});
+
+const suggestionRequestSchema = z.object({
+  fileName: z.string().min(1).max(512),
+  code: z.string().min(1).max(120_000),
+  currentLine: z.string().max(2_000),
+  previousLines: z.string().max(8_000),
+  textBeforeCursor: z.string().max(2_000),
+  textAfterCursor: z.string().max(2_000),
+  nextLines: z.string().max(8_000).optional().default(""),
+  lineNumber: z.number().int().min(1).max(200_000),
+});
+
+const isRateLimited = createRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 45,
 });
 
 const SUGGESTION_PROMPT = `You are a code suggestion assistant.
@@ -53,6 +70,19 @@ export async function POST(request: Request) {
       );
     }
 
+    if (isRateLimited(userId)) {
+      return NextResponse.json(
+        { error: "Rate limit exceeded. Try again shortly." },
+        { status: 429 },
+      );
+    }
+
+    const body = await request.json().catch(() => null);
+    const parsed = suggestionRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid request payload" }, { status: 400 });
+    }
+
     const {
       fileName,
       code,
@@ -62,14 +92,7 @@ export async function POST(request: Request) {
       textAfterCursor,
       nextLines,
       lineNumber,
-    } = await request.json();
-
-    if (!code) {
-      return NextResponse.json(
-        {error: "Code is needed"},
-        {status: 400}
-      );
-    }
+    } = parsed.data;
 
     const prompt = SUGGESTION_PROMPT
       .replace("{fileName}", fileName)

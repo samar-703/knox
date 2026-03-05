@@ -171,13 +171,15 @@ export const SchemaDisplayPath = ({
     /\{([^}]+)\}/g,
     '<span class="text-blue-600 dark:text-blue-400">{$1}</span>'
   );
+  const htmlContent =
+    typeof children === "string" ? children : highlightedPath;
 
   return (
     <span
       className={cn("font-mono text-sm", className)}
       // biome-ignore lint/security/noDangerouslySetInnerHtml: "needed for parameter highlighting"
       // oxlint-disable-next-line eslint-plugin-react(no-danger)
-      dangerouslySetInnerHTML={{ __html: children ?? highlightedPath }}
+      dangerouslySetInnerHTML={{ __html: htmlContent }}
       {...props}
     />
   );

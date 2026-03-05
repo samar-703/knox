@@ -32,6 +32,10 @@ export const getLanguageExtension = (filename: string): Extension => {
       return java();
     case "cpp":
       return cpp();
+    case "go":
+      return go();
+    case "rs":
+      return rust();
     case "json":
       return json()
     case "md":

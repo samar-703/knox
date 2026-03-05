@@ -7,7 +7,7 @@ const suggestionRequestSchema = z.object({
   code: z.string(),
   currentLine: z.string(),
   previousLines: z.string(),
-  textbeforeCursor: z.string(),
+  textBeforeCursor: z.string(),
   textAfterCursor: z.string(),
   nextLines: z.string(),
   lineNumber: z.number(),
