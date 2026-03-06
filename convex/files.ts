@@ -4,6 +4,25 @@ import { mutation, query } from "./_generated/server";
 import { verifyAuth } from "./auth";
 import { Doc, Id } from "./_generated/dataModel";
 
+const MAX_ENTRY_NAME_LENGTH = 255;
+
+const sanitizeEntryName = (name: string) => {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error("Name is required");
+  }
+  if (trimmed.length > MAX_ENTRY_NAME_LENGTH) {
+    throw new Error("Name is too long");
+  }
+  if (trimmed === "." || trimmed === "..") {
+    throw new Error("Invalid name");
+  }
+  if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("\0")) {
+    throw new Error("Invalid name");
+  }
+  return trimmed;
+};
+
 export const getFiles = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
@@ -145,6 +164,15 @@ export const createFile = mutation({
       throw new Error("Unauthorized access to project");
     }
 
+    const fileName = sanitizeEntryName(args.name);
+
+    if (args.parentId) {
+      const parent = await ctx.db.get(args.parentId);
+      if (!parent || parent.projectId !== args.projectId || parent.type !== "folder") {
+        throw new Error("Invalid parent folder");
+      }
+    }
+
     const files = await ctx.db
     .query("files")
     .withIndex("by_project_parent", (q) => 
@@ -154,17 +182,14 @@ export const createFile = mutation({
     )
     .collect();
 
-    const existing = files.find(
-      (file) => file.name === args.name && file.type === "file"
-    );
-
-    if (existing) throw new Error("File already exists");
+    const existing = files.find((file) => file.name === fileName);
+    if (existing) throw new Error("A file or folder with this name already exists");
 
     const now = Date.now();
 
     await ctx.db.insert("files", {
       projectId: args.projectId,
-      name: args.name,
+      name: fileName,
       content: args.content,
       type: "file",
       parentId: args.parentId,
@@ -196,6 +221,15 @@ export const createFolder = mutation({
       throw new Error("Unauthorized access to project");
     }
 
+    const folderName = sanitizeEntryName(args.name);
+
+    if (args.parentId) {
+      const parent = await ctx.db.get(args.parentId);
+      if (!parent || parent.projectId !== args.projectId || parent.type !== "folder") {
+        throw new Error("Invalid parent folder");
+      }
+    }
+
     //* Check if folder with same name already exists in parent folder
     const files = await ctx.db
     .query("files")
@@ -206,17 +240,14 @@ export const createFolder = mutation({
     )
     .collect();
 
-    const existing = files.find(
-      (file) => file.name === args.name && file.type === "folder"
-    );
-
-    if (existing) throw new Error("Folder already exists");
+    const existing = files.find((file) => file.name === folderName);
+    if (existing) throw new Error("A file or folder with this name already exists");
 
     const now = Date.now();
 
     await ctx.db.insert("files", {
       projectId: args.projectId,
-      name: args.name,
+      name: folderName,
       type: "folder",
       parentId: args.parentId,
       updatedAt: now,
@@ -250,6 +281,8 @@ export const createFolder = mutation({
       throw new Error("Unauthorized access to project");
     }
 
+    const newName = sanitizeEntryName(args.newName);
+
     // check if a file with a new name already exists in the same parent folder
 
     const siblings = await ctx.db 
@@ -263,8 +296,7 @@ export const createFolder = mutation({
 
     const existing = siblings.find(
       (sibling) =>
-        sibling.name === args.newName &&
-        sibling.type === file.type &&
+        sibling.name === newName &&
         sibling._id !== file._id
     );
 
@@ -278,7 +310,7 @@ export const createFolder = mutation({
 
     // update the file name
     await ctx.db.patch("files", args.id, {
-      name: args.newName,
+      name: newName,
       updatedAt: now,
     });
 
@@ -385,6 +417,4 @@ export const updateFile = mutation({
     });
   },
 });
-
-
 
