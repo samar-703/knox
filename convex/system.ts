@@ -15,6 +15,24 @@ const validateInternalKey = (key: string) => {
 }
 
 type InternalCtx = QueryCtx | MutationCtx;
+const MAX_ENTRY_NAME_LENGTH = 255;
+
+const sanitizeEntryName = (name: string) => {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error("Name is required");
+  }
+  if (trimmed.length > MAX_ENTRY_NAME_LENGTH) {
+    throw new Error("Name is too long");
+  }
+  if (trimmed === "." || trimmed === "..") {
+    throw new Error("Invalid name");
+  }
+  if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("\0")) {
+    throw new Error("Invalid name");
+  }
+  return trimmed;
+};
 
 const getProjectForConversation = async (
   ctx: InternalCtx,
@@ -31,6 +49,36 @@ const getProjectForConversation = async (
   }
 
   return { conversation, project };
+};
+
+const getProjectForUser = async (
+  ctx: InternalCtx,
+  projectId: Id<"projects">,
+  userId: string,
+) => {
+  const project = await ctx.db.get("projects", projectId);
+  if (!project || project.ownerId !== userId) {
+    return null;
+  }
+  return project;
+};
+
+const getFileForUser = async (
+  ctx: InternalCtx,
+  fileId: Id<"files">,
+  userId: string,
+) => {
+  const file = await ctx.db.get("files", fileId);
+  if (!file) {
+    return null;
+  }
+
+  const project = await getProjectForUser(ctx, file.projectId, userId);
+  if (!project) {
+    return null;
+  }
+
+  return { file, project };
 };
 
 export const getConversationById = query({
@@ -196,6 +244,52 @@ export const getProjectFilesForUser = query({
   },
 });
 
+export const getProjectEntriesForUser = query({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.string(),
+    internalKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    validateInternalKey(args.internalKey);
+
+    const project = await getProjectForUser(ctx, args.projectId, args.userId);
+    if (!project) {
+      return [];
+    }
+
+    const entries = await ctx.db
+      .query("files")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    const entryMap = new Map(entries.map((entry) => [entry._id, entry]));
+
+    const buildPath = (fileId: Id<"files">) => {
+      const pathSegments: string[] = [];
+      let current = entryMap.get(fileId);
+
+      while (current) {
+        pathSegments.unshift(current.name);
+        current = current.parentId ? entryMap.get(current.parentId) : undefined;
+      }
+
+      return pathSegments.join("/");
+    };
+
+    return entries.map((entry) => ({
+      _id: entry._id,
+      name: entry.name,
+      type: entry.type,
+      parentId: entry.parentId,
+      projectId: entry.projectId,
+      content: entry.content,
+      path: buildPath(entry._id),
+      updatedAt: entry.updatedAt,
+    }));
+  },
+});
+
 export const createMessage = mutation({
   args: {
     internalKey: v.string(),
@@ -262,6 +356,141 @@ export const updateMessageStatus = mutation({
 
     await ctx.db.patch("messages", args.messageId, {
       status: args.status,
+    });
+  },
+});
+
+export const updateFileContentForUser = mutation({
+  args: {
+    internalKey: v.string(),
+    userId: v.string(),
+    fileId: v.id("files"),
+    content: v.string(),
+  },
+  handler: async (ctx, args) => {
+    validateInternalKey(args.internalKey);
+
+    const fileData = await getFileForUser(ctx, args.fileId, args.userId);
+    if (!fileData) {
+      throw new Error("File not found");
+    }
+    if (fileData.file.type !== "file") {
+      throw new Error("Can only update files");
+    }
+
+    const now = Date.now();
+    await ctx.db.patch("files", args.fileId, {
+      content: args.content,
+      updatedAt: now,
+    });
+    await ctx.db.patch("projects", fileData.file.projectId, {
+      updatedAt: now,
+    });
+  },
+});
+
+export const createFileForUser = mutation({
+  args: {
+    internalKey: v.string(),
+    userId: v.string(),
+    projectId: v.id("projects"),
+    parentId: v.optional(v.id("files")),
+    name: v.string(),
+    content: v.string(),
+  },
+  handler: async (ctx, args) => {
+    validateInternalKey(args.internalKey);
+
+    const project = await getProjectForUser(ctx, args.projectId, args.userId);
+    if (!project) {
+      throw new Error("Project not found");
+    }
+    const fileName = sanitizeEntryName(args.name);
+
+    if (args.parentId) {
+      const parentData = await getFileForUser(ctx, args.parentId, args.userId);
+      if (!parentData || parentData.file.type !== "folder") {
+        throw new Error("Parent folder not found");
+      }
+      if (parentData.file.projectId !== args.projectId) {
+        throw new Error("Parent folder is not in this project");
+      }
+    }
+
+    const siblings = await ctx.db
+      .query("files")
+      .withIndex("by_project_parent", (q) =>
+        q.eq("projectId", args.projectId).eq("parentId", args.parentId),
+      )
+      .collect();
+
+    const exists = siblings.some((entry) => entry.name === fileName);
+    if (exists) {
+      throw new Error("A file or folder with this name already exists");
+    }
+
+    const now = Date.now();
+    const fileId = await ctx.db.insert("files", {
+      projectId: args.projectId,
+      parentId: args.parentId,
+      name: fileName,
+      type: "file",
+      content: args.content,
+      updatedAt: now,
+    });
+
+    await ctx.db.patch("projects", args.projectId, {
+      updatedAt: now,
+    });
+
+    return fileId;
+  },
+});
+
+export const deleteFileForUser = mutation({
+  args: {
+    internalKey: v.string(),
+    userId: v.string(),
+    fileId: v.id("files"),
+  },
+  handler: async (ctx, args) => {
+    validateInternalKey(args.internalKey);
+
+    const fileData = await getFileForUser(ctx, args.fileId, args.userId);
+    if (!fileData) {
+      throw new Error("File not found");
+    }
+
+    const deleteRecursive = async (entryId: Id<"files">) => {
+      const entry = await ctx.db.get("files", entryId);
+      if (!entry) {
+        return;
+      }
+
+      if (entry.type === "folder") {
+        const children = await ctx.db
+          .query("files")
+          .withIndex("by_project_parent", (q) =>
+            q.eq("projectId", entry.projectId).eq("parentId", entryId),
+          )
+          .collect();
+
+        for (const child of children) {
+          await deleteRecursive(child._id);
+        }
+      }
+
+      if (entry.storageId) {
+        await ctx.storage.delete(entry.storageId);
+      }
+
+      await ctx.db.delete("files", entryId);
+    };
+
+    await deleteRecursive(args.fileId);
+
+    await ctx.db.patch("projects", fileData.file.projectId, {
+      updatedAt: Date.now(),
     });
   },
 });
