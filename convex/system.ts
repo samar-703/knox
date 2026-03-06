@@ -146,6 +146,56 @@ export const hasProcessingMessageForUser = query({
   },
 });
 
+export const getProjectFilesForUser = query({
+  args: {
+    projectId: v.id("projects"),
+    userId: v.string(),
+    internalKey: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    validateInternalKey(args.internalKey);
+
+    const project = await ctx.db.get("projects", args.projectId);
+    if (!project || project.ownerId !== args.userId) {
+      return [];
+    }
+
+    const files = await ctx.db
+      .query("files")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    const fileMap = new Map(files.map((file) => [file._id, file]));
+
+    const buildPath = (fileId: Id<"files">) => {
+      const pathSegments: string[] = [];
+      let current = fileMap.get(fileId);
+
+      while (current) {
+        pathSegments.unshift(current.name);
+        current = current.parentId ? fileMap.get(current.parentId) : undefined;
+      }
+
+      return pathSegments.join("/");
+    };
+
+    const textFiles = files
+      .filter((file) => file.type === "file" && typeof file.content === "string")
+      .map((file) => ({
+        _id: file._id,
+        name: file.name,
+        path: buildPath(file._id),
+        content: file.content ?? "",
+        updatedAt: file.updatedAt,
+      }))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+
+    const limit = args.limit ? Math.max(1, Math.min(args.limit, 300)) : 200;
+    return textFiles.slice(0, limit);
+  },
+});
+
 export const createMessage = mutation({
   args: {
     internalKey: v.string(),
