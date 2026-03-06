@@ -7,20 +7,66 @@ const DEFAULT_SEARCH_LIMIT = 8;
 const DEFAULT_READ_MAX_CHARS = 4_000;
 const DEFAULT_READ_LINE_SPAN = 200;
 
-export type AgentToolName = "list_files" | "read_file" | "search_files";
+export type AgentToolName =
+  | "list_files"
+  | "read_file"
+  | "search_files"
+  | "apply_instruction_to_file"
+  | "create_file"
+  | "delete_file";
+
+export interface WorkspaceEntry {
+  _id: string;
+  name: string;
+  path: string;
+  type: "file" | "folder";
+  parentId?: string;
+  projectId: string;
+  content?: string;
+  updatedAt: number;
+}
+
+export interface ToolExecutionHandlers {
+  applyInstructionToFile: (args: {
+    path: string;
+    instruction: string;
+  }) => Promise<string>;
+  createFile: (args: { path: string; content: string }) => Promise<string>;
+  deleteFile: (args: { path: string }) => Promise<string>;
+}
 
 interface ToolCallInput {
   toolName: AgentToolName;
   rawArgs: unknown;
   files: RetrievedFile[];
+  handlers: ToolExecutionHandlers;
 }
 
-const trimToolOutput = (value: string, maxChars = MAX_TOOL_OUTPUT_CHARS) => {
-  if (value.length <= maxChars) {
-    return value;
+export const normalizeWorkspacePath = (value: string) =>
+  value.trim().replace(/^\.?\//, "").replace(/\/+/g, "/").replace(/\/$/, "");
+
+export const isSafeWorkspacePath = (value: string) => {
+  if (!value) {
+    return false;
   }
-  return `${value.slice(0, maxChars)}\n\n[output truncated]`;
+
+  const segments = value.split("/");
+  return segments.every(
+    (segment) =>
+      segment.length > 0 &&
+      segment !== "." &&
+      segment !== ".." &&
+      !segment.includes("\\") &&
+      !segment.includes("\0"),
+  );
 };
+
+const pathArgSchema = z
+  .string()
+  .min(1)
+  .max(400)
+  .transform(normalizeWorkspacePath)
+  .refine(isSafeWorkspacePath, "Path must be a safe relative path");
 
 const listFilesArgsSchema = z.object({
   query: z.string().max(120).optional(),
@@ -28,7 +74,7 @@ const listFilesArgsSchema = z.object({
 });
 
 const readFileArgsSchema = z.object({
-  path: z.string().min(1).max(400),
+  path: pathArgSchema,
   startLine: z.number().int().min(1).max(200_000).optional(),
   endLine: z.number().int().min(1).max(200_000).optional(),
   maxChars: z.number().int().min(200).max(10_000).optional(),
@@ -39,6 +85,27 @@ const searchFilesArgsSchema = z.object({
   limit: z.number().int().min(1).max(30).optional(),
 });
 
+const applyInstructionArgsSchema = z.object({
+  path: pathArgSchema,
+  instruction: z.string().min(1).max(2_000),
+});
+
+const createFileArgsSchema = z.object({
+  path: pathArgSchema,
+  content: z.string().max(100_000).optional().default(""),
+});
+
+const deleteFileArgsSchema = z.object({
+  path: pathArgSchema,
+});
+
+const trimToolOutput = (value: string, maxChars = MAX_TOOL_OUTPUT_CHARS) => {
+  if (value.length <= maxChars) {
+    return value;
+  }
+  return `${value.slice(0, maxChars)}\n\n[output truncated]`;
+};
+
 const formatFileList = (paths: string[]) => {
   if (paths.length === 0) {
     return "No files found.";
@@ -48,13 +115,12 @@ const formatFileList = (paths: string[]) => {
 };
 
 const resolveFileByPath = (files: RetrievedFile[], inputPath: string) => {
-  const normalized = inputPath.trim().replace(/^\.?\//, "");
+  const normalized = normalizeWorkspacePath(inputPath);
   const exact = files.find((file) => file.path === normalized);
   if (exact) {
     return exact;
   }
 
-  // Fallback: match by basename if exact path wasn't provided.
   const basenameMatches = files.filter(
     (file) => file.path.split("/").at(-1) === normalized,
   );
@@ -145,7 +211,44 @@ const runSearchFiles = (rawArgs: unknown, files: RetrievedFile[]) => {
   return `Search results for "${query}":\n${results.join("\n")}`;
 };
 
-export const executeAgentTool = ({ toolName, rawArgs, files }: ToolCallInput) => {
+const runApplyInstruction = async (
+  rawArgs: unknown,
+  handlers: ToolExecutionHandlers,
+) => {
+  const parsed = applyInstructionArgsSchema.safeParse(rawArgs);
+  if (!parsed.success) {
+    return `Invalid args for apply_instruction_to_file: ${parsed.error.issues[0]?.message ?? "unknown error"}`;
+  }
+  return await handlers.applyInstructionToFile(parsed.data);
+};
+
+const runCreateFile = async (rawArgs: unknown, handlers: ToolExecutionHandlers) => {
+  const parsed = createFileArgsSchema.safeParse(rawArgs);
+  if (!parsed.success) {
+    return `Invalid args for create_file: ${parsed.error.issues[0]?.message ?? "unknown error"}`;
+  }
+  return await handlers.createFile({
+    path: parsed.data.path,
+    content: parsed.data.content,
+  });
+};
+
+const runDeleteFile = async (rawArgs: unknown, handlers: ToolExecutionHandlers) => {
+  const parsed = deleteFileArgsSchema.safeParse(rawArgs);
+  if (!parsed.success) {
+    return `Invalid args for delete_file: ${parsed.error.issues[0]?.message ?? "unknown error"}`;
+  }
+  return await handlers.deleteFile({
+    path: parsed.data.path,
+  });
+};
+
+export const executeAgentTool = async ({
+  toolName,
+  rawArgs,
+  files,
+  handlers,
+}: ToolCallInput) => {
   let output: string;
 
   switch (toolName) {
@@ -157,6 +260,15 @@ export const executeAgentTool = ({ toolName, rawArgs, files }: ToolCallInput) =>
       break;
     case "search_files":
       output = runSearchFiles(rawArgs, files);
+      break;
+    case "apply_instruction_to_file":
+      output = await runApplyInstruction(rawArgs, handlers);
+      break;
+    case "create_file":
+      output = await runCreateFile(rawArgs, handlers);
+      break;
+    case "delete_file":
+      output = await runDeleteFile(rawArgs, handlers);
       break;
     default:
       output = "Unknown tool requested.";
@@ -178,4 +290,16 @@ Available tools:
 3) search_files
    args: { "query": string, "limit"?: number }
    use when you need to locate symbols/text quickly.
+
+4) apply_instruction_to_file
+   args: { "path": string, "instruction": string }
+   use when you need to modify an existing file.
+
+5) create_file
+   args: { "path": string, "content"?: string }
+   use when you need to create a new file.
+
+6) delete_file
+   args: { "path": string }
+   use when you need to delete a file.
 `;
