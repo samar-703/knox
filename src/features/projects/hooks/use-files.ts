@@ -48,3 +48,7 @@ export const useFolderContents = ({
     enabled ? { projectId, parentId } : "skip",
   );
 };
+
+export const useProjectFiles = (projectId: Id<"projects"> | null) => {
+  return useQuery(api.files.getFiles, projectId ? { projectId } : "skip");
+};
