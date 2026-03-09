@@ -290,6 +290,18 @@ export const getProjectEntriesForUser = query({
   },
 });
 
+export const getProjectByIdForUser = query({
+  args: {
+    internalKey: v.string(),
+    userId: v.string(),
+    projectId: v.id("projects"),
+  },
+  handler: async (ctx, args) => {
+    validateInternalKey(args.internalKey);
+    return await getProjectForUser(ctx, args.projectId, args.userId);
+  },
+});
+
 export const createMessage = mutation({
   args: {
     internalKey: v.string(),
@@ -389,6 +401,65 @@ export const updateFileContentForUser = mutation({
   },
 });
 
+export const updateProjectImportStatusForUser = mutation({
+  args: {
+    internalKey: v.string(),
+    userId: v.string(),
+    projectId: v.id("projects"),
+    status: v.optional(
+      v.union(
+        v.literal("importing"),
+        v.literal("completed"),
+        v.literal("failed"),
+      ),
+    ),
+  },
+  handler: async (ctx, args) => {
+    validateInternalKey(args.internalKey);
+
+    const project = await getProjectForUser(ctx, args.projectId, args.userId);
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    await ctx.db.patch("projects", args.projectId, {
+      importStatus: args.status,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const updateProjectExportStatusForUser = mutation({
+  args: {
+    internalKey: v.string(),
+    userId: v.string(),
+    projectId: v.id("projects"),
+    status: v.optional(
+      v.union(
+        v.literal("exporting"),
+        v.literal("completed"),
+        v.literal("failed"),
+        v.literal("cancelled"),
+      ),
+    ),
+    exportRepoUrl: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    validateInternalKey(args.internalKey);
+
+    const project = await getProjectForUser(ctx, args.projectId, args.userId);
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    await ctx.db.patch("projects", args.projectId, {
+      exportStatus: args.status,
+      exportRepoUrl: args.exportRepoUrl,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const createFileForUser = mutation({
   args: {
     internalKey: v.string(),
@@ -444,6 +515,100 @@ export const createFileForUser = mutation({
     });
 
     return fileId;
+  },
+});
+
+export const createFolderForUser = mutation({
+  args: {
+    internalKey: v.string(),
+    userId: v.string(),
+    projectId: v.id("projects"),
+    parentId: v.optional(v.id("files")),
+    name: v.string(),
+  },
+  handler: async (ctx, args) => {
+    validateInternalKey(args.internalKey);
+
+    const project = await getProjectForUser(ctx, args.projectId, args.userId);
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    const folderName = sanitizeEntryName(args.name);
+
+    if (args.parentId) {
+      const parentData = await getFileForUser(ctx, args.parentId, args.userId);
+      if (!parentData || parentData.file.type !== "folder") {
+        throw new Error("Parent folder not found");
+      }
+      if (parentData.file.projectId !== args.projectId) {
+        throw new Error("Parent folder is not in this project");
+      }
+    }
+
+    const siblings = await ctx.db
+      .query("files")
+      .withIndex("by_project_parent", (q) =>
+        q.eq("projectId", args.projectId).eq("parentId", args.parentId),
+      )
+      .collect();
+
+    const exists = siblings.some((entry) => entry.name === folderName);
+    if (exists) {
+      throw new Error("A file or folder with this name already exists");
+    }
+
+    const now = Date.now();
+    const folderId = await ctx.db.insert("files", {
+      projectId: args.projectId,
+      parentId: args.parentId,
+      name: folderName,
+      type: "folder",
+      updatedAt: now,
+    });
+
+    await ctx.db.patch("projects", args.projectId, {
+      updatedAt: now,
+    });
+
+    return folderId;
+  },
+});
+
+export const clearProjectFilesForUser = mutation({
+  args: {
+    internalKey: v.string(),
+    userId: v.string(),
+    projectId: v.id("projects"),
+  },
+  handler: async (ctx, args) => {
+    validateInternalKey(args.internalKey);
+
+    const project = await getProjectForUser(ctx, args.projectId, args.userId);
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    const entries = await ctx.db
+      .query("files")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    for (const entry of entries) {
+      if (entry.storageId) {
+        await ctx.storage.delete(entry.storageId);
+      }
+    }
+
+    for (const entry of entries) {
+      await ctx.db.delete("files", entry._id);
+    }
+
+    await ctx.db.patch("projects", args.projectId, {
+      updatedAt: Date.now(),
+    });
+
+    return entries.length;
   },
 });
 
