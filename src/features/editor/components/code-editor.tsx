@@ -38,7 +38,7 @@ export const CodeEditor = ({ fileName, initialValue="", onChange }: Props) => {
         languageExtension,
         suggestion(fileName),
         quickEdit(fileName),
-        selectionTooltip(),
+        selectionTooltip(fileName),
         keymap.of([indentWithTab]),
         minimap(),
         indentationMarkers(),
