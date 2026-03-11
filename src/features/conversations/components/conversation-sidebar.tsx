@@ -1,6 +1,6 @@
 import ky from "ky";
 import { toast } from "sonner";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { 
   CopyIcon, 
   HistoryIcon, 
@@ -41,6 +41,12 @@ import {
 
 import { Id } from "../../../../convex/_generated/dataModel";
 import { DEFAULT_CONVERSATION_TITLE } from "../../../../convex/constants";
+import {
+  ADD_SELECTION_TO_CHAT_EVENT,
+  AddSelectionToChatDetail,
+} from "../constants";
+
+const MAX_SELECTED_CODE_CHARS = 8_000;
 
 interface ConversationSidebarProps {
   projectId: Id<"projects">;
@@ -77,6 +83,46 @@ export const ConversationSidebar = ({
   const isProcessing = conversationMessages?.some(
     (msg) => msg.status === "processing"
   );
+
+  useEffect(() => {
+    const handleAddSelectionToChat = (event: Event) => {
+      const customEvent = event as CustomEvent<AddSelectionToChatDetail>;
+      const selectedCode = customEvent.detail?.selectedCode?.trim();
+      const fileName = customEvent.detail?.fileName;
+
+      if (!selectedCode) {
+        return;
+      }
+
+      const clippedCode =
+        selectedCode.length > MAX_SELECTED_CODE_CHARS
+          ? `${selectedCode.slice(0, MAX_SELECTED_CODE_CHARS)}\n...[truncated]`
+          : selectedCode;
+
+      const language = fileName?.split(".").pop()?.toLowerCase() ?? "";
+      const snippetLabel = fileName
+        ? `Selected code from ${fileName}:`
+        : "Selected code:";
+      const snippet = `${snippetLabel}\n\`\`\`${language}\n${clippedCode}\n\`\`\``;
+
+      setInput((currentInput) => {
+        const trimmed = currentInput.trimEnd();
+        return trimmed ? `${trimmed}\n\n${snippet}` : snippet;
+      });
+    };
+
+    window.addEventListener(
+      ADD_SELECTION_TO_CHAT_EVENT,
+      handleAddSelectionToChat as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        ADD_SELECTION_TO_CHAT_EVENT,
+        handleAddSelectionToChat as EventListener,
+      );
+    };
+  }, []);
 
   const handleCancel = async () => {
     if (!activeProcessingMessageId) {
