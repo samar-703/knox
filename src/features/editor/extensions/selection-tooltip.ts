@@ -1,10 +1,17 @@
 import { Tooltip, showTooltip, EditorView } from "@codemirror/view";
 import { StateField, EditorState } from "@codemirror/state";
 import { showQuickEditEffect, quickEditState } from "./quick-edit";
+import {
+  ADD_SELECTION_TO_CHAT_EVENT,
+  AddSelectionToChatDetail,
+} from "@/features/conversations/constants";
 
 let editorView: EditorView | null = null;
 
-const createTooltipForSelection = (state: EditorState): readonly Tooltip[] => {
+const createTooltipForSelection = (
+  state: EditorState,
+  fileName?: string,
+): readonly Tooltip[] => {
   const selection = state.selection.main;
 
   if (selection.empty) {
@@ -12,7 +19,7 @@ const createTooltipForSelection = (state: EditorState): readonly Tooltip[] => {
   }
 
   const isQuickEditActive = state.field(quickEditState);
-  if (!isQuickEditActive) {
+  if (isQuickEditActive) {
     return [];
   }
   return [
@@ -26,19 +33,38 @@ const createTooltipForSelection = (state: EditorState): readonly Tooltip[] => {
           "bg-popover text-popover-foreground z-50 rounded-sm border border-input p-1 shadow-md flex items-center gap-2 text-sm";
 
         const addToChatButton = document.createElement("button");
-        addToChatButton.textContent = "Add to chat";
+        addToChatButton.textContent = "Add this to chat";
         addToChatButton.className =
           "font-sans p-1 px-2 hover:bg-foreground/10 rounded-sm";
+        addToChatButton.onclick = () => {
+          const selectedCode = state.doc
+            .sliceString(selection.from, selection.to)
+            .trim();
+          if (!selectedCode) {
+            return;
+          }
+
+          const addToChatEvent = new CustomEvent<AddSelectionToChatDetail>(
+            ADD_SELECTION_TO_CHAT_EVENT,
+            {
+              detail: {
+                fileName,
+                selectedCode,
+              },
+            },
+          );
+          window.dispatchEvent(addToChatEvent);
+        };
 
         const quickEditButton = document.createElement("button");
         quickEditButton.className =
           "font-sans p-1 px-2 hover:bg-foreground/10 rounded-sm";
 
         const quickEditButtonText = document.createElement("span");
-        quickEditButtonText.textContent = "Quick Edit";
+        quickEditButtonText.textContent = "Make a quick fix";
 
         const quickEditShortcut = document.createElement("span");
-        quickEditShortcut.textContent = "ctrl+K";
+        quickEditShortcut.textContent = "Ctrl+K";
         quickEditShortcut.className = "text-sm opacity-60";
 
         quickEditButton.appendChild(quickEditButtonText);
@@ -61,32 +87,33 @@ const createTooltipForSelection = (state: EditorState): readonly Tooltip[] => {
   ];
 };
 
-const selectionTooltipField = StateField.define<readonly Tooltip[]>({
-  create(state) {
-    return createTooltipForSelection(state);
-  },
+const createSelectionTooltipField = (fileName?: string) =>
+  StateField.define<readonly Tooltip[]>({
+    create(state) {
+      return createTooltipForSelection(state, fileName);
+    },
 
-  update(tooltips, transaction) {
-    if (transaction.docChanged || transaction.selection) {
-      return createTooltipForSelection(transaction.state);
-    }
-    for (const effect of transaction.effects) {
-      if (effect.is(showQuickEditEffect)) {
-        return createTooltipForSelection(transaction.state);
+    update(tooltips, transaction) {
+      if (transaction.docChanged || transaction.selection) {
+        return createTooltipForSelection(transaction.state, fileName);
       }
-    }
-    return tooltips;
-  },
+      for (const effect of transaction.effects) {
+        if (effect.is(showQuickEditEffect)) {
+          return createTooltipForSelection(transaction.state, fileName);
+        }
+      }
+      return tooltips;
+    },
 
-  provide: (field) =>
-    showTooltip.computeN([field], (state) => state.field(field)),
-});
+    provide: (field) =>
+      showTooltip.computeN([field], (state) => state.field(field)),
+  });
 
 const captureViewExtension = EditorView.updateListener.of((update) => {
   editorView = update.view;
 });
 
-export const selectionTooltip = () => [
-  selectionTooltipField,
+export const selectionTooltip = (fileName?: string) => [
+  createSelectionTooltipField(fileName),
   captureViewExtension,
 ];
