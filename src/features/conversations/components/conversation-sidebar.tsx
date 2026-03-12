@@ -1,8 +1,9 @@
-import ky from "ky";
+import ky, { HTTPError } from "ky";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import { 
   CopyIcon, 
+  ImagePlusIcon,
   HistoryIcon, 
   LoaderIcon, 
   PlusIcon,
@@ -25,11 +26,21 @@ import {
   PromptInput,
   PromptInputBody,
   PromptInputFooter,
+  PromptInputButton,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputTools,
+  usePromptInputAttachments,
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
+import { SpeechInput } from "@/components/ai-elements/speech-input";
+import {
+  Attachment,
+  AttachmentInfo,
+  AttachmentPreview,
+  AttachmentRemove,
+  Attachments,
+} from "@/components/ai-elements/attachments";
 import { Button } from "@/components/ui/button";
 
 import {
@@ -47,6 +58,71 @@ import {
 } from "../constants";
 
 const MAX_SELECTED_CODE_CHARS = 8_000;
+const MAX_IMAGE_ATTACHMENTS = 3;
+const MAX_IMAGE_ATTACHMENT_BYTES = 1024 * 1024;
+
+const ConversationAttachmentPreview = ({
+  onHasAttachmentsChange,
+}: {
+  onHasAttachmentsChange: (hasAttachments: boolean) => void;
+}) => {
+  const attachments = usePromptInputAttachments();
+
+  useEffect(() => {
+    onHasAttachmentsChange(attachments.files.length > 0);
+  }, [attachments.files.length, onHasAttachmentsChange]);
+
+  if (attachments.files.length === 0) {
+    return null;
+  }
+
+  return (
+    <Attachments className="mb-2" variant="inline">
+      {attachments.files.map((file) => (
+        <Attachment
+          key={file.id}
+          data={file}
+          onRemove={() => attachments.remove(file.id)}
+        >
+          <AttachmentPreview />
+          <AttachmentInfo />
+          <AttachmentRemove />
+        </Attachment>
+      ))}
+    </Attachments>
+  );
+};
+
+const ConversationPromptTools = ({
+  isProcessing,
+  onTranscriptionChange,
+}: {
+  isProcessing: boolean;
+  onTranscriptionChange: (text: string) => void;
+}) => {
+  const attachments = usePromptInputAttachments();
+
+  return (
+    <PromptInputTools>
+      <PromptInputButton
+        aria-label="Attach image"
+        onClick={attachments.openFileDialog}
+        disabled={isProcessing}
+        size="icon-xs"
+        variant="highlight"
+      >
+        <ImagePlusIcon className="size-3.5" />
+      </PromptInputButton>
+      <SpeechInput
+        aria-label="Voice input"
+        onTranscriptionChange={onTranscriptionChange}
+        disabled={isProcessing}
+        size="icon-xs"
+        variant="highlight"
+      />
+    </PromptInputTools>
+  );
+};
 
 interface ConversationSidebarProps {
   projectId: Id<"projects">;
@@ -64,6 +140,7 @@ export const ConversationSidebar = ({
     pastConversationsOpen,
     setPastConversationsOpen
   ] = useState(false);
+  const [hasPendingAttachments, setHasPendingAttachments] = useState(false);
 
   const createConversation = useCreateConversation();
   const conversations = useConversations(projectId);
@@ -154,7 +231,7 @@ export const ConversationSidebar = ({
 
   const handleSubmit = async (message: PromptInputMessage) => {
     // If processing and no new message, this is just a stop function
-    if (isProcessing && !message.text) {
+    if (isProcessing && !message.text && message.files.length === 0) {
       await handleCancel()
       setInput("");
       return;
@@ -175,14 +252,39 @@ export const ConversationSidebar = ({
         json: {
           conversationId,
           message: message.text,
+          attachments: message.files,
         },
       });
-    } catch {
-      toast.error("Message failed to send");
+    } catch (error) {
+      let messageText = "Message failed to send";
+      if (error instanceof HTTPError) {
+        const payload = (await error.response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        messageText = payload?.error ?? messageText;
+      }
+      toast.error(messageText);
     }
 
     setInput("");
-  }
+  };
+
+  const handleVoiceTranscription = (transcribedText: string) => {
+    const transcript = transcribedText.trim();
+    if (!transcript) {
+      return;
+    }
+
+    setInput((currentInput) => {
+      const trimmedCurrent = currentInput.trimEnd();
+      if (!trimmedCurrent) {
+        return transcript;
+      }
+
+      const separator = trimmedCurrent.endsWith("\n") ? "" : " ";
+      return `${trimmedCurrent}${separator}${transcript}`;
+    });
+  };
 
   return (
     <>
@@ -286,8 +388,15 @@ export const ConversationSidebar = ({
           <PromptInput 
             onSubmit={handleSubmit}
             className="mt-2"
+            accept="image/*"
+            maxFiles={MAX_IMAGE_ATTACHMENTS}
+            maxFileSize={MAX_IMAGE_ATTACHMENT_BYTES}
+            onError={(error) => toast.error(error.message)}
           >
             <PromptInputBody>
+              <ConversationAttachmentPreview
+                onHasAttachmentsChange={setHasPendingAttachments}
+              />
               <PromptInputTextarea
                 placeholder="Ask Knox anything..."
                 onChange={(e) => setInput(e.target.value)}
@@ -296,9 +405,12 @@ export const ConversationSidebar = ({
               />
             </PromptInputBody>
             <PromptInputFooter>
-              <PromptInputTools />
+              <ConversationPromptTools
+                isProcessing={Boolean(isProcessing)}
+                onTranscriptionChange={handleVoiceTranscription}
+              />
               <PromptInputSubmit
-                disabled={isProcessing ? false : !input}
+                disabled={isProcessing ? false : (!input.trim() && !hasPendingAttachments)}
                 status={isProcessing ? "streaming" : undefined}
               />
             </PromptInputFooter>
