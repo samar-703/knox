@@ -43,14 +43,16 @@ Behave like a pragmatic software engineer:
 
 const agentDecisionSchema = z.object({
   mode: z.enum(["tool", "final"]),
-  toolName: z.enum([
-    "list_files",
-    "read_file",
-    "search_files",
-    "apply_instruction_to_file",
-    "create_file",
-    "delete_file",
-  ]).optional(),
+  toolName: z
+    .enum([
+      "list_files",
+      "read_file",
+      "search_files",
+      "apply_instruction_to_file",
+      "create_file",
+      "delete_file",
+    ])
+    .optional(),
   toolArgs: z.record(z.string(), z.unknown()).optional(),
   response: z.string().max(12_000).optional(),
 });
@@ -71,9 +73,10 @@ const clipText = (value: string, maxChars: number) => {
 
 const shouldAllowWrites = (message: string) => {
   const normalized = message.toLowerCase();
-  const hasEditVerb = /\b(fix|edit|update|change|modify|create|delete|remove|refactor|implement|write|add|make|optimi[sz]e)\b/.test(
-    normalized,
-  );
+  const hasEditVerb =
+    /\b(fix|edit|update|change|modify|create|delete|remove|refactor|implement|write|add|make|optimi[sz]e)\b/.test(
+      normalized,
+    );
   const hasInstructionCue =
     /\b(please|can you|could you|go ahead|do it|apply|now|implement)\b/.test(
       normalized,
@@ -110,7 +113,10 @@ const buildConversationContext = (
     .filter((message) => message.status !== "cancelled")
     .filter(
       (message) =>
-        !(message._id === currentAssistantMessageId && message.role === "assistant"),
+        !(
+          message._id === currentAssistantMessageId &&
+          message.role === "assistant"
+        ),
     )
     .slice(-MAX_CONTEXT_MESSAGES)
     .map(
@@ -231,11 +237,13 @@ const appendToolTranscript = (transcript: string[], entry: string) => {
 export const processMessage = inngest.createFunction(
   {
     id: "process-message",
-    cancelOn: [{
-      event: "message/cancel",
-      if: "event.data.messageId == async.data.messageId",
-    }],
-    onFailure: async ({ event, step}) => {
+    cancelOn: [
+      {
+        event: "message/cancel",
+        if: "event.data.messageId == async.data.messageId",
+      },
+    ],
+    onFailure: async ({ event, step }) => {
       const eventData = event.data.event.data as Partial<MessageEvent>;
       const messageId = eventData.messageId as Id<"messages"> | undefined;
       const internalKey = process.env.CONVEX_INTERNAL_KEY;
@@ -257,14 +265,15 @@ export const processMessage = inngest.createFunction(
         });
       });
 
-      if (message && message.status !== "cancelled"){
+      if (message && message.status !== "cancelled") {
         await step.run("update-assistant-message", async () => {
           await convex.mutation(api.system.updateMessageContent, {
             internalKey,
             messageId,
-            content: "My apologies, but I encountered an error while processing your message.",
-          })
-        })
+            content:
+              "My apologies, but I encountered an error while processing your message.",
+          });
+        });
       }
     },
   },
@@ -275,7 +284,7 @@ export const processMessage = inngest.createFunction(
     const { messageId, conversationId, userId } = event.data as MessageEvent;
 
     const internalKey = process.env.CONVEX_INTERNAL_KEY;
-    
+
     if (!internalKey) {
       throw new NonRetriableError("Internal key not configured");
     }
@@ -306,19 +315,24 @@ export const processMessage = inngest.createFunction(
 
     const latestUserMessage = [...messages]
       .reverse()
-      .find((message) => message.role === "user" && Boolean(message.content.trim()));
+      .find(
+        (message) => message.role === "user" && Boolean(message.content.trim()),
+      );
 
     if (!latestUserMessage) {
       throw new NonRetriableError("No user message found for processing");
     }
 
-    const workspaceEntriesResponse = await step.run("load-project-entries", async () => {
-      return await convex.query(api.system.getProjectEntriesForUser, {
-        internalKey,
-        userId,
-        projectId: conversation.projectId,
-      });
-    });
+    const workspaceEntriesResponse = await step.run(
+      "load-project-entries",
+      async () => {
+        return await convex.query(api.system.getProjectEntriesForUser, {
+          internalKey,
+          userId,
+          projectId: conversation.projectId,
+        });
+      },
+    );
 
     let workspaceEntries = workspaceEntriesResponse as WorkspaceEntry[];
     let writeOperations = 0;
@@ -326,7 +340,9 @@ export const processMessage = inngest.createFunction(
 
     const getWorkspaceFiles = (): RetrievedFile[] =>
       workspaceEntries
-        .filter((entry) => entry.type === "file" && typeof entry.content === "string")
+        .filter(
+          (entry) => entry.type === "file" && typeof entry.content === "string",
+        )
         .map((entry) => ({
           _id: entry._id,
           name: entry.name,
@@ -418,7 +434,13 @@ ${originalContent}
 
         return `Updated ${normalizedPath}. ${output.summary ?? buildChangeSummary(originalContent, editedContent)}`;
       },
-      createFile: async ({ path, content }: { path: string; content: string }) => {
+      createFile: async ({
+        path,
+        content,
+      }: {
+        path: string;
+        content: string;
+      }) => {
         if (!writesAllowed) {
           return "Write tools are disabled for this request because no explicit edit intent was detected.";
         }
@@ -454,14 +476,17 @@ ${originalContent}
           return `Parent folder does not exist: ${parentPath}`;
         }
 
-        const createdFileId = await convex.mutation(api.system.createFileForUser, {
-          internalKey,
-          userId,
-          projectId: conversation.projectId,
-          parentId: parent ? (parent._id as Id<"files">) : undefined,
-          name: fileName,
-          content,
-        });
+        const createdFileId = await convex.mutation(
+          api.system.createFileForUser,
+          {
+            internalKey,
+            userId,
+            projectId: conversation.projectId,
+            parentId: parent ? (parent._id as Id<"files">) : undefined,
+            name: fileName,
+            content,
+          },
+        );
 
         writeOperations += 1;
         workspaceEntries = [
@@ -492,7 +517,9 @@ ${originalContent}
         if (!isSafeWorkspacePath(normalizedPath)) {
           return "Invalid file path.";
         }
-        const target = workspaceEntries.find((entry) => entry.path === normalizedPath);
+        const target = workspaceEntries.find(
+          (entry) => entry.path === normalizedPath,
+        );
         if (!target) {
           return `Cannot delete. Path not found: ${normalizedPath}`;
         }
@@ -528,15 +555,18 @@ ${originalContent}
         remainingWrites: Math.max(0, MAX_WRITE_OPERATIONS - writeOperations),
       });
 
-      const decision = await step.run(`agent-decision-${stepIndex + 1}`, async () => {
-        const { output } = await generateText({
-          model: google("gemini-2.0-flash"),
-          output: Output.object({ schema: agentDecisionSchema }),
-          prompt: decisionPrompt,
-          maxOutputTokens: 800,
-        });
-        return output as AgentDecision;
-      });
+      const decision = await step.run(
+        `agent-decision-${stepIndex + 1}`,
+        async () => {
+          const { output } = await generateText({
+            model: google("gemini-2.0-flash"),
+            output: Output.object({ schema: agentDecisionSchema }),
+            prompt: decisionPrompt,
+            maxOutputTokens: 800,
+          });
+          return output as AgentDecision;
+        },
+      );
 
       if (decision.mode === "final" && decision.response?.trim()) {
         finalResponse = decision.response.trim();
@@ -544,14 +574,17 @@ ${originalContent}
       }
 
       if (decision.mode === "tool" && decision.toolName) {
-        const toolOutput = await step.run(`tool-execution-${stepIndex + 1}`, async () => {
-          return await executeAgentTool({
-            toolName: decision.toolName as AgentToolName,
-            rawArgs: decision.toolArgs ?? {},
-            files: getWorkspaceFiles(),
-            handlers: toolHandlers,
-          });
-        });
+        const toolOutput = await step.run(
+          `tool-execution-${stepIndex + 1}`,
+          async () => {
+            return await executeAgentTool({
+              toolName: decision.toolName as AgentToolName,
+              rawArgs: decision.toolArgs ?? {},
+              files: getWorkspaceFiles(),
+              handlers: toolHandlers,
+            });
+          },
+        );
 
         appendToolTranscript(
           toolTranscript,
@@ -588,12 +621,27 @@ ${originalContent}
       (finalResponse && finalResponse.trim()) ||
       "I could not generate a response for that request.";
 
+    // Check if the message has been cancelled before writing the response.
+    // The cancel API sets status to "cancelled" -- if that happened while
+    // the function was running, we must not overwrite it.
+    const currentMessage = await step.run("check-cancelled", async () => {
+      return await convex.query(api.system.getMessageByIdForUser, {
+        internalKey,
+        userId,
+        messageId,
+      });
+    });
+
+    if (!currentMessage || currentMessage.status === "cancelled") {
+      return;
+    }
+
     await step.run("update-assistant-message", async () => {
       await convex.mutation(api.system.updateMessageContent, {
         internalKey,
         messageId,
         content: safeText,
-      })
+      });
     });
-  }
-)
+  },
+);
