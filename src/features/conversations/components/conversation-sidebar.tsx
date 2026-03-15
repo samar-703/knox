@@ -1,11 +1,11 @@
 import ky, { HTTPError } from "ky";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
-import { 
-  CopyIcon, 
+import {
+  CopyIcon,
   ImagePlusIcon,
-  HistoryIcon, 
-  LoaderIcon, 
+  HistoryIcon,
+  LoaderIcon,
   PlusIcon,
   XIcon,
 } from "lucide-react";
@@ -126,20 +126,15 @@ const ConversationPromptTools = ({
 
 interface ConversationSidebarProps {
   projectId: Id<"projects">;
-};
+}
 
 export const ConversationSidebar = ({
   projectId,
 }: ConversationSidebarProps) => {
   const [input, setInput] = useState("");
-  const [
-    selectedConversationId,
-    setSelectedConversationId,
-  ] = useState<Id<"conversations"> | null>(null);
-  const [
-    pastConversationsOpen,
-    setPastConversationsOpen
-  ] = useState(false);
+  const [selectedConversationId, setSelectedConversationId] =
+    useState<Id<"conversations"> | null>(null);
+  const [pastConversationsOpen, setPastConversationsOpen] = useState(false);
   const [hasPendingAttachments, setHasPendingAttachments] = useState(false);
 
   const createConversation = useCreateConversation();
@@ -153,12 +148,14 @@ export const ConversationSidebar = ({
   const activeProcessingMessageId = conversationMessages
     ?.slice()
     .reverse()
-    .find((message) => message.status === "processing" && message.role === "assistant")
-    ?._id;
+    .find(
+      (message) =>
+        message.status === "processing" && message.role === "assistant",
+    )?._id;
 
   // Check if any message is currently processing
   const isProcessing = conversationMessages?.some(
-    (msg) => msg.status === "processing"
+    (msg) => msg.status === "processing",
   );
 
   useEffect(() => {
@@ -210,7 +207,23 @@ export const ConversationSidebar = ({
       await ky.post("/api/messages/cancel", {
         json: { messageId: activeProcessingMessageId },
       });
-    } catch {
+    } catch (error) {
+      // Parse the server response to show a meaningful message.
+      if (error instanceof HTTPError) {
+        const payload = (await error.response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        const serverMessage = payload?.error;
+
+        // 409 means the message already finished -- not really an error.
+        if (error.response.status === 409) {
+          toast.info(serverMessage ?? "Response already completed");
+          return;
+        }
+
+        toast.error(serverMessage ?? "Unable to cancel request");
+        return;
+      }
       toast.error("Unable to cancel request");
     }
   };
@@ -230,13 +243,6 @@ export const ConversationSidebar = ({
   };
 
   const handleSubmit = async (message: PromptInputMessage) => {
-    // If processing and no new message, this is just a stop function
-    if (isProcessing && !message.text && message.files.length === 0) {
-      await handleCancel()
-      setInput("");
-      return;
-    }
-
     let conversationId = activeConversationId;
 
     if (!conversationId) {
@@ -258,9 +264,9 @@ export const ConversationSidebar = ({
     } catch (error) {
       let messageText = "Message failed to send";
       if (error instanceof HTTPError) {
-        const payload = (await error.response.json().catch(() => null)) as
-          | { error?: string }
-          | null;
+        const payload = (await error.response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
         messageText = payload?.error ?? messageText;
       }
       toast.error(messageText);
@@ -346,10 +352,7 @@ export const ConversationSidebar = ({
         <Conversation className="flex-1">
           <ConversationContent>
             {conversationMessages?.map((message, messageIndex) => (
-              <Message
-                key={message._id}
-                from={message.role}
-              >
+              <Message key={message._id} from={message.role}>
                 <MessageContent>
                   {message.status === "processing" ? (
                     <div className="flex items-center gap-2 text-muted-foreground">
@@ -370,22 +373,21 @@ export const ConversationSidebar = ({
                     <MessageActions>
                       <MessageAction
                         onClick={() => {
-                          navigator.clipboard.writeText(message.content)
+                          navigator.clipboard.writeText(message.content);
                         }}
                         label="Copy"
                       >
                         <CopyIcon className="size-3" />
                       </MessageAction>
                     </MessageActions>
-                  )
-                }
+                  )}
               </Message>
             ))}
           </ConversationContent>
           <ConversationScrollButton />
         </Conversation>
         <div className="p-3">
-          <PromptInput 
+          <PromptInput
             onSubmit={handleSubmit}
             className="mt-2"
             accept="image/*"
@@ -410,8 +412,11 @@ export const ConversationSidebar = ({
                 onTranscriptionChange={handleVoiceTranscription}
               />
               <PromptInputSubmit
-                disabled={isProcessing ? false : (!input.trim() && !hasPendingAttachments)}
+                disabled={
+                  isProcessing ? false : !input.trim() && !hasPendingAttachments
+                }
                 status={isProcessing ? "streaming" : undefined}
+                onStop={handleCancel}
               />
             </PromptInputFooter>
           </PromptInput>
