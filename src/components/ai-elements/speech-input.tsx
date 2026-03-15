@@ -109,6 +109,16 @@ export const SpeechInput = ({
   const onAudioRecordedRef =
     useRef<SpeechInputProps["onAudioRecorded"]>(onAudioRecorded);
 
+  // Tracks whether the user intends to keep listening.
+  // true after clicking start, false after clicking stop.
+  // Used to auto-restart recognition when the browser fires
+  // the "end" event prematurely (silence timeout, etc.).
+  const isListeningIntentRef = useRef(false);
+
+  // Accumulates all final transcripts across browser-initiated
+  // restarts so nothing is lost during a single session.
+  const transcriptRef = useRef("");
+
   // Keep refs in sync
   onTranscriptionChangeRef.current = onTranscriptionChange;
   onAudioRecordedRef.current = onAudioRecorded;
@@ -132,12 +142,35 @@ export const SpeechInput = ({
     };
 
     const handleEnd = () => {
+      // If the user still intends to listen, the browser stopped
+      // on its own (silence timeout, etc.) -- restart automatically.
+      if (isListeningIntentRef.current) {
+        try {
+          speechRecognition.start();
+        } catch {
+          // Already started or other error -- give up gracefully.
+          isListeningIntentRef.current = false;
+          setIsListening(false);
+          const accumulated = transcriptRef.current.trim();
+          if (accumulated) {
+            onTranscriptionChangeRef.current?.(accumulated);
+            transcriptRef.current = "";
+          }
+        }
+        return;
+      }
+
+      // User explicitly stopped -- deliver the accumulated transcript.
       setIsListening(false);
+      const accumulated = transcriptRef.current.trim();
+      if (accumulated) {
+        onTranscriptionChangeRef.current?.(accumulated);
+        transcriptRef.current = "";
+      }
     };
 
     const handleResult = (event: Event) => {
       const speechEvent = event as SpeechRecognitionEvent;
-      let finalTranscript = "";
 
       for (
         let i = speechEvent.resultIndex;
@@ -146,17 +179,26 @@ export const SpeechInput = ({
       ) {
         const result = speechEvent.results[i];
         if (result.isFinal) {
-          finalTranscript += result[0]?.transcript ?? "";
+          const text = result[0]?.transcript ?? "";
+          if (text) {
+            // Append with a space separator to build a continuous transcript.
+            transcriptRef.current += (transcriptRef.current ? " " : "") + text;
+          }
         }
-      }
-
-      if (finalTranscript) {
-        onTranscriptionChangeRef.current?.(finalTranscript);
       }
     };
 
-    const handleError = () => {
+    const handleError = (event: Event) => {
+      const errorEvent = event as SpeechRecognitionErrorEvent;
+      // "no-speech" and "aborted" are non-fatal -- let the end handler
+      // decide whether to restart based on isListeningIntentRef.
+      if (errorEvent.error === "no-speech" || errorEvent.error === "aborted") {
+        return;
+      }
+      // For fatal errors (not-allowed, network, etc.), stop entirely.
+      isListeningIntentRef.current = false;
       setIsListening(false);
+      transcriptRef.current = "";
     };
 
     speechRecognition.addEventListener("start", handleStart);
@@ -168,6 +210,7 @@ export const SpeechInput = ({
     setIsRecognitionReady(true);
 
     return () => {
+      isListeningIntentRef.current = false;
       speechRecognition.removeEventListener("start", handleStart);
       speechRecognition.removeEventListener("end", handleEnd);
       speechRecognition.removeEventListener("result", handleResult);
@@ -190,7 +233,7 @@ export const SpeechInput = ({
         }
       }
     },
-    []
+    [],
   );
 
   // Start MediaRecorder recording
@@ -267,8 +310,13 @@ export const SpeechInput = ({
   const toggleListening = useCallback(() => {
     if (mode === "speech-recognition" && recognitionRef.current) {
       if (isListening) {
+        // User explicitly stops -- clear intent so handleEnd delivers transcript.
+        isListeningIntentRef.current = false;
         recognitionRef.current.stop();
       } else {
+        // User starts a new session -- reset accumulated transcript.
+        transcriptRef.current = "";
+        isListeningIntentRef.current = true;
         recognitionRef.current.start();
       }
     } else if (mode === "media-recorder") {
@@ -309,7 +357,7 @@ export const SpeechInput = ({
           isListening
             ? "bg-destructive text-white hover:bg-destructive/80 hover:text-white"
             : "bg-primary text-primary-foreground hover:bg-primary/80 hover:text-primary-foreground",
-          className
+          className,
         )}
         disabled={isDisabled}
         onClick={toggleListening}
