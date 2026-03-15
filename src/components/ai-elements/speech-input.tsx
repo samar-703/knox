@@ -352,6 +352,7 @@ export const SpeechInput = ({
 
       {/* Main record button */}
       <Button
+        type="button"
         className={cn(
           "relative z-10 rounded-full transition-all duration-300",
           isListening
