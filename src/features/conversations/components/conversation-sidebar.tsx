@@ -1,6 +1,6 @@
 import ky, { HTTPError } from "ky";
 import { toast } from "sonner";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   CopyIcon,
   ImagePlusIcon,
@@ -198,7 +198,7 @@ export const ConversationSidebar = ({
     };
   }, []);
 
-  const handleCancel = async () => {
+  const handleCancel = useCallback(async () => {
     if (!activeProcessingMessageId) {
       return;
     }
@@ -226,7 +226,7 @@ export const ConversationSidebar = ({
       }
       toast.error("Unable to cancel request");
     }
-  };
+  }, [activeProcessingMessageId]);
 
   const handleCreateConversation = async () => {
     try {
