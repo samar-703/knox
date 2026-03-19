@@ -266,6 +266,56 @@ export const Preview = ({ projectId }: { projectId: Id<"projects"> }) => {
     return () => clearInterval(interval);
   }, [previewUrl]);
 
+  useEffect(() => {
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+
+    const connectWebSocket = () => {
+      try {
+        ws = new WebSocket(`ws://localhost:${PREVIEW_PORT}`);
+
+        ws.onopen = () => {
+          console.log("🔌 WebSocket connected for hot reload");
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === "refresh") {
+              console.log("🔄 Hot reload triggered");
+              setRefreshKey(k => k + 1);
+            }
+          } catch (e) {
+            console.error("Failed to parse WebSocket message:", e);
+          }
+        };
+
+        ws.onerror = () => {
+          console.log("WebSocket error, will retry...");
+        };
+
+        ws.onclose = () => {
+          console.log("WebSocket closed, reconnecting in 3s...");
+          reconnectTimeout = setTimeout(connectWebSocket, 3000);
+        };
+      } catch (e) {
+        console.error("Failed to connect WebSocket:", e);
+        reconnectTimeout = setTimeout(connectWebSocket, 3000);
+      }
+    };
+
+    connectWebSocket();
+
+    return () => {
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+      if (ws) {
+        ws.close();
+      }
+    };
+  }, []);
+
   const activePreviewPath = previewTabId
     ? previewFiles.find((f) => f._id === previewTabId)?.path ?? selectedPath
     : selectedPath;
@@ -284,6 +334,29 @@ export const Preview = ({ projectId }: { projectId: Id<"projects"> }) => {
 
     return selectedPreview.content;
   }, [selectedPreview, fileMap]);
+
+  useEffect(() => {
+    if (!selectedPreview || !isServerRunning) return;
+
+    const sendFileUpdate = async () => {
+      try {
+        await fetch(`${previewUrl}/__update`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            path: selectedPreview.path,
+            content: selectedPreview.content,
+            type: "file",
+          }),
+        });
+      } catch {
+        // Silently fail - server might not be running
+      }
+    };
+
+    const debounceTimeout = setTimeout(sendFileUpdate, 500);
+    return () => clearTimeout(debounceTimeout);
+  }, [selectedPreview?.content, selectedPreview?.path, isServerRunning, previewUrl]);
 
   const handleFileSelect = useCallback((path: string) => {
     setPreviewState(prev => {

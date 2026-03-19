@@ -348,9 +348,33 @@ function getAboutHTML(): string {
 
 const clients = new Set<WebSocket>();
 
+interface FileUpdate {
+  path: string;
+  content: string;
+  type: "file" | "folder";
+}
+
+const broadcastRefresh = () => {
+  const message = JSON.stringify({ type: "refresh" });
+  clients.forEach(client => {
+    if (client.readyState === 1) { // WebSocket.OPEN
+      client.send(message);
+    }
+  });
+};
+
+const broadcastFileUpdate = (path: string) => {
+  const message = JSON.stringify({ type: "file-update", path });
+  clients.forEach(client => {
+    if (client.readyState === 1) {
+      client.send(message);
+    }
+  });
+};
+
 async function startServer() {
   const files = await fetchProjectFiles(PROJECT_ID);
-  const fileMap = new Map(files.map(f => [f.path, f]));
+  const fileMap = new Map<string, FileUpdate>(files.map(f => [f.path, f]));
   
   console.log(`\n🚀 Preview Server starting on http://localhost:${PORT}`);
   console.log(`📁 Project: ${PROJECT_ID}`);
@@ -361,13 +385,73 @@ async function startServer() {
     const url = new URL(req.url || "/", `http://localhost:${PORT}`);
     let path = url.pathname.slice(1);
 
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      });
+      res.end();
+      return;
+    }
+
     if (!path) {
       path = "index.html";
     }
 
     if (path === "__refresh") {
-      res.writeHead(204);
+      res.writeHead(204, {
+        "Access-Control-Allow-Origin": "*",
+      });
       res.end();
+      return;
+    }
+
+    if (path === "__update" && req.method === "POST") {
+      let body = "";
+      req.on("data", chunk => { body += chunk; });
+      req.on("end", () => {
+        try {
+          const update: FileUpdate = JSON.parse(body);
+          fileMap.set(update.path, update);
+          console.log(`📝 File updated: ${update.path}`);
+          broadcastRefresh();
+          res.writeHead(200, {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          });
+          res.end(JSON.stringify({ success: true }));
+        } catch (e) {
+          res.writeHead(400, {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          });
+          res.end(JSON.stringify({ error: "Invalid JSON" }));
+        }
+      });
+      return;
+    }
+
+    if (path === "__reload" && req.method === "POST") {
+      console.log("🔄 Triggering manual refresh...");
+      broadcastRefresh();
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(JSON.stringify({ success: true }));
+      return;
+    }
+
+    if (path === "__files" && req.method === "GET") {
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(JSON.stringify(Array.from(fileMap.entries()).map(([path, file]) => ({
+        path,
+        type: file.type,
+      }))));
       return;
     }
 
@@ -376,12 +460,18 @@ async function startServer() {
     if (!file) {
       const indexHtml = fileMap.get("index.html");
       if (indexHtml && path === "index") {
-        res.writeHead(200, { "Content-Type": "text/html" });
+        res.writeHead(200, { 
+          "Content-Type": "text/html",
+          "Access-Control-Allow-Origin": "*",
+        });
         res.end(indexHtml.content);
         return;
       }
       
-      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.writeHead(404, { 
+        "Content-Type": "text/plain",
+        "Access-Control-Allow-Origin": "*",
+      });
       res.end("File not found");
       return;
     }
