@@ -396,9 +396,9 @@ async function startServer() {
     res.end(file.content);
   });
 
-  const wss = new WebSocketServer({ server });
+  const wss = new WSServer({ server });
 
-  wss.on("connection", (ws) => {
+  wss.on("connection", (ws: WebSocket) => {
     clients.add(ws);
     console.log(`👤 Client connected. Total: ${clients.size}`);
     
