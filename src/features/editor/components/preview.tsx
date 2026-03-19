@@ -11,6 +11,8 @@ import {
   ZoomInIcon,
   ZoomOutIcon,
   GlobeIcon,
+  ExternalLinkIcon,
+  PlayIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -245,6 +247,24 @@ export const Preview = ({ projectId }: { projectId: Id<"projects"> }) => {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const { selectedPath, urlInput, history, historyIndex } = previewState;
+  const PREVIEW_PORT = 3001;
+  const previewUrl = `http://localhost:${PREVIEW_PORT}`;
+  
+  const [isServerRunning, setIsServerRunning] = useState(false);
+
+  useEffect(() => {
+    const checkServer = async () => {
+      try {
+        const response = await fetch(`${previewUrl}/__refresh`, { method: "HEAD" });
+        setIsServerRunning(response.ok);
+      } catch {
+        setIsServerRunning(false);
+      }
+    };
+    checkServer();
+    const interval = setInterval(checkServer, 5000);
+    return () => clearInterval(interval);
+  }, [previewUrl]);
 
   const activePreviewPath = previewTabId
     ? previewFiles.find((f) => f._id === previewTabId)?.path ?? selectedPath
@@ -252,7 +272,8 @@ export const Preview = ({ projectId }: { projectId: Id<"projects"> }) => {
 
   const selectedPreview = previewFiles.find((f) => f.path === activePreviewPath);
 
-  const displayUrlInput = selectedPreview ? `/${selectedPreview.path}` : urlInput;
+  const fullPreviewUrl = selectedPreview ? `${previewUrl}/${selectedPreview.path}` : previewUrl;
+  const displayUrlInput = fullPreviewUrl;
 
   const processedContent = useMemo(() => {
     if (!selectedPreview) return null;
@@ -484,6 +505,20 @@ export const Preview = ({ projectId }: { projectId: Id<"projects"> }) => {
             </SelectContent>
           </Select>
 
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                onClick={() => window.open(fullPreviewUrl, "_blank")}
+                className="h-6 w-6"
+              >
+                <ExternalLinkIcon className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Open in browser</TooltipContent>
+          </Tooltip>
+
           <div className="h-4 w-px bg-border mx-1" />
 
           <Tooltip>
@@ -531,10 +566,34 @@ export const Preview = ({ projectId }: { projectId: Id<"projects"> }) => {
       </div>
 
       <div className="h-7 border-b px-3 flex items-center gap-2 shrink-0 bg-muted/20">
-        <GlobeIcon className="size-3 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground truncate">
-          {displayUrlInput || "/"}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <div
+            className={cn(
+              "w-2 h-2 rounded-full",
+              isServerRunning ? "bg-green-500" : "bg-yellow-500"
+            )}
+          />
+          <span className="text-xs text-muted-foreground">
+            {isServerRunning ? "Connected" : "Offline"}
+          </span>
+        </div>
+        <div className="h-3 w-px bg-border" />
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(displayUrlInput);
+          }}
+          className="flex items-center gap-1.5 hover:bg-accent/50 px-1.5 py-0.5 rounded transition-colors"
+        >
+          <GlobeIcon className="size-3 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground truncate font-mono">
+            {displayUrlInput || "/"}
+          </span>
+        </button>
+        {!isServerRunning && (
+          <span className="text-xs text-muted-foreground/60 ml-1">
+            (Run npm run dev:preview)
+          </span>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto flex items-start justify-center p-4">
