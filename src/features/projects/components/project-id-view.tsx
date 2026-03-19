@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import ky, { HTTPError } from "ky";
 import { toast } from "sonner";
 import { Allotment } from "allotment";
@@ -10,10 +10,10 @@ import { FaGithub } from "react-icons/fa";
 import { cn } from "@/lib/utils";
 import { sanitizeGitHubRepoName } from "@/lib/github";
 import { EditorView } from "@/features/editor/components/editor-view";
+import { Preview } from "@/features/editor/components/preview";
 import {
   useProject,
 } from "@/features/projects/hooks/use-projects";
-import { useProjectFiles } from "@/features/projects/hooks/use-files";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -34,15 +34,6 @@ const MIN_SIDEBAR_WIDTH = 200;
 const MAX_SIDEBAR_WIDTH = 800;
 const DEFAULT_SIDEBAR_WIDTH = 350;
 const DEFAULT_MAIN_SIZE = 1000;
-
-interface PreviewFile {
-  _id: string;
-  path: string;
-  content: string;
-}
-
-const isHtmlFile = (path: string) => /\.(html?)$/i.test(path);
-const isMarkdownFile = (path: string) => /\.(md|mdx)$/i.test(path);
 
 const Tab = ({
   label,
@@ -72,81 +63,12 @@ export const ProjectIdView = ({
   projectId: Id<"projects">;
 }) => {
   const project = useProject(projectId);
-  const projectFiles = useProjectFiles(projectId);
 
   const [activeView, setActiveView] = useState<"editor" | "preview">("editor");
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [exportRepoName, setExportRepoName] = useState("");
   const [isPrivateRepo, setIsPrivateRepo] = useState(true);
   const [isExportingRequest, setIsExportingRequest] = useState(false);
-  const [selectedPreviewPath, setSelectedPreviewPath] = useState<string | null>(null);
-
-  const previewFiles = useMemo<PreviewFile[]>(() => {
-    if (!projectFiles) {
-      return [];
-    }
-
-    const fileMap = new Map(projectFiles.map((file) => [file._id, file]));
-    return projectFiles
-      .filter((entry) => entry.type === "file" && typeof entry.content === "string")
-      .map((entry) => {
-        const pathSegments = [entry.name];
-        let parentId = entry.parentId;
-
-        while (parentId) {
-          const parent = fileMap.get(parentId);
-          if (!parent) {
-            break;
-          }
-          pathSegments.unshift(parent.name);
-          parentId = parent.parentId;
-        }
-
-        return {
-          _id: entry._id,
-          path: pathSegments.join("/"),
-          content: entry.content ?? "",
-        };
-      })
-      .sort((a, b) => a.path.localeCompare(b.path));
-  }, [projectFiles]);
-
-  const defaultPreviewPath = useMemo(() => {
-    const rootIndex = previewFiles.find((file) => /^index\.html?$/i.test(file.path));
-    if (rootIndex) {
-      return rootIndex.path;
-    }
-
-    const anyHtml = previewFiles.find((file) => isHtmlFile(file.path));
-    if (anyHtml) {
-      return anyHtml.path;
-    }
-
-    const anyMarkdown = previewFiles.find((file) => isMarkdownFile(file.path));
-    if (anyMarkdown) {
-      return anyMarkdown.path;
-    }
-
-    return previewFiles[0]?.path ?? null;
-  }, [previewFiles]);
-
-  useEffect(() => {
-    if (!defaultPreviewPath) {
-      setSelectedPreviewPath(null);
-      return;
-    }
-
-    if (
-      !selectedPreviewPath ||
-      !previewFiles.some((file) => file.path === selectedPreviewPath)
-    ) {
-      setSelectedPreviewPath(defaultPreviewPath);
-    }
-  }, [defaultPreviewPath, previewFiles, selectedPreviewPath]);
-
-  const selectedPreview = previewFiles.find(
-    (file) => file.path === selectedPreviewPath,
-  );
 
   const isExporting = isExportingRequest || project?.exportStatus === "exporting";
 
@@ -292,48 +214,7 @@ export const ProjectIdView = ({
               activeView === "preview" ? "visible" : "invisible",
             )}
           >
-            <div className="h-full bg-background flex flex-col">
-              <div className="h-10 border-b px-3 flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Preview file</span>
-                <select
-                  className="h-8 rounded-md border border-input bg-transparent px-2 text-sm min-w-[280px]"
-                  value={selectedPreviewPath ?? ""}
-                  onChange={(event) => setSelectedPreviewPath(event.target.value)}
-                  disabled={!selectedPreview || previewFiles.length === 0}
-                >
-                  {previewFiles.map((file) => (
-                    <option key={file._id} value={file.path}>
-                      {file.path}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex-1 min-h-0">
-                {projectFiles === undefined && (
-                  <div className="size-full flex items-center justify-center text-sm text-muted-foreground">
-                    Loading preview...
-                  </div>
-                )}
-                {projectFiles !== undefined && previewFiles.length === 0 && (
-                  <div className="size-full flex items-center justify-center text-sm text-muted-foreground">
-                    No text files available to preview.
-                  </div>
-                )}
-                {selectedPreview && isHtmlFile(selectedPreview.path) && (
-                  <iframe
-                    className="size-full bg-white"
-                    srcDoc={selectedPreview.content}
-                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-                    title={`Preview ${selectedPreview.path}`}
-                  />
-                )}
-                {selectedPreview && !isHtmlFile(selectedPreview.path) && (
-                  <pre className="size-full overflow-auto p-4 text-xs font-mono whitespace-pre-wrap">
-                    {selectedPreview.content}
-                  </pre>
-                )}
-              </div>
-            </div>
+            <Preview projectId={projectId} />
           </div>
         </div>
       </div>
