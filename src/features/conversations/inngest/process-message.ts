@@ -4,7 +4,6 @@ import { NonRetriableError } from "inngest";
 import { convex } from "@/lib/convex-client";
 import { api } from "../../../../convex/_generated/api";
 import { generateText, Output } from "ai";
-import { google } from "@ai-sdk/google";
 import { z } from "zod";
 import { RetrievedFile, selectRelevantFiles } from "./retrieval";
 import {
@@ -15,11 +14,17 @@ import {
   normalizeWorkspacePath,
   WorkspaceEntry,
 } from "./agent-tools";
+import {
+  decryptAiSettings,
+  getLanguageModel,
+  getFallbackAiSettings,
+} from "@/lib/ai-provider.server";
 
 interface MessageEvent {
   messageId: Id<"messages">;
   conversationId: Id<"conversations">;
   userId: string;
+  encryptedAiSettings?: string | null;
 }
 
 const MAX_CONTEXT_MESSAGES = 12;
@@ -289,6 +294,20 @@ export const processMessage = inngest.createFunction(
       throw new NonRetriableError("Internal key not configured");
     }
 
+    const aiSettings =
+      (event.data as MessageEvent).encryptedAiSettings
+        ? decryptAiSettings(
+            (event.data as MessageEvent).encryptedAiSettings!,
+            internalKey,
+          )
+        : getFallbackAiSettings();
+
+    if (!aiSettings) {
+      throw new NonRetriableError(
+        "AI provider not configured for this request",
+      );
+    }
+
     const conversation = await step.run("load-conversation", async () => {
       return await convex.query(api.system.getConversationByIdForUser, {
         internalKey,
@@ -407,7 +426,7 @@ ${originalContent}
 </original_content>`;
 
         const { output } = await generateText({
-          model: google("gemini-2.0-flash"),
+          model: getLanguageModel(aiSettings, "chat"),
           output: Output.object({ schema: editOutputSchema }),
           prompt: editPrompt,
           maxOutputTokens: 4_000,
@@ -559,7 +578,7 @@ ${originalContent}
         `agent-decision-${stepIndex + 1}`,
         async () => {
           const { output } = await generateText({
-            model: google("gemini-2.0-flash"),
+            model: getLanguageModel(aiSettings, "chat"),
             output: Output.object({ schema: agentDecisionSchema }),
             prompt: decisionPrompt,
             maxOutputTokens: 800,
@@ -608,7 +627,7 @@ ${originalContent}
 
       const { text } = await step.run("generate-assistant-reply", async () => {
         return await generateText({
-          model: google("gemini-2.0-flash"),
+          model: getLanguageModel(aiSettings, "chat"),
           prompt: finalPrompt,
           maxOutputTokens: 1_200,
         });

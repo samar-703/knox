@@ -56,6 +56,7 @@ import {
   ADD_SELECTION_TO_CHAT_EVENT,
   AddSelectionToChatDetail,
 } from "../constants";
+import { useAiSettings } from "@/features/ai/provider/ai-settings-provider";
 
 const MAX_SELECTED_CODE_CHARS = 8_000;
 const MAX_IMAGE_ATTACHMENTS = 3;
@@ -136,6 +137,7 @@ export const ConversationSidebar = ({
     useState<Id<"conversations"> | null>(null);
   const [pastConversationsOpen, setPastConversationsOpen] = useState(false);
   const [hasPendingAttachments, setHasPendingAttachments] = useState(false);
+  const { configuredSettings } = useAiSettings();
 
   const createConversation = useCreateConversation();
   const conversations = useConversations(projectId);
@@ -259,6 +261,7 @@ export const ConversationSidebar = ({
           conversationId,
           message: message.text,
           attachments: message.files,
+          providerConfig: configuredSettings ?? undefined,
         },
       });
     } catch (error) {
