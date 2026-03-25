@@ -1,9 +1,10 @@
 import { generateText, Output } from "ai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { google } from "@ai-sdk/google";
 import { auth } from "@clerk/nextjs/server";
 import { createRateLimiter } from "@/lib/rate-limit";
+import { aiSettingsSchema } from "@/lib/ai-settings";
+import { getLanguageModel, resolveAiSettings } from "@/lib/ai-provider.server";
 
 
 const suggestionSchema = z.object ({
@@ -21,6 +22,7 @@ const suggestionRequestSchema = z.object({
   textAfterCursor: z.string().max(2_000),
   nextLines: z.string().max(8_000).optional().default(""),
   lineNumber: z.number().int().min(1).max(200_000),
+  providerConfig: aiSettingsSchema.optional(),
 });
 
 const isRateLimited = createRateLimiter({
@@ -92,7 +94,16 @@ export async function POST(request: Request) {
       textAfterCursor,
       nextLines,
       lineNumber,
+      providerConfig,
     } = parsed.data;
+
+    const aiSettings = resolveAiSettings(providerConfig);
+    if (!aiSettings) {
+      return NextResponse.json(
+        { error: "AI provider not configured. Open the AI settings panel and add your API key." },
+        { status: 400 },
+      );
+    }
 
     const prompt = SUGGESTION_PROMPT
       .replace("{fileName}", fileName)
@@ -105,7 +116,7 @@ export async function POST(request: Request) {
       .replace("{lineNumber}", lineNumber.toString());
 
     const { output } = await generateText({
-      model: google("gemini-2.0-flash"),
+      model: getLanguageModel(aiSettings, "autocomplete"),
       output: Output.object({ schema: suggestionSchema }),
       prompt,
     });
