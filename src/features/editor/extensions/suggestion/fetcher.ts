@@ -1,6 +1,7 @@
 import ky from 'ky';
 import { z } from 'zod';
 import { toast } from "sonner";
+import { loadAiSettings } from "@/lib/ai-settings-client";
 
 const suggestionRequestSchema = z.object({
   fileName: z.string(),
@@ -29,7 +30,10 @@ export const fetcher = async (
 
     const response = await ky
       .post("/api/suggestion", {
-        json: validatePayload,
+        json: {
+          ...validatePayload,
+          providerConfig: loadAiSettings() ?? undefined,
+        },
         signal,
         timeout: 10_000,
         retry: 0,
