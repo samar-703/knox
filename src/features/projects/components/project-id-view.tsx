@@ -4,7 +4,7 @@ import { useState } from "react";
 import ky, { HTTPError } from "ky";
 import { toast } from "sonner";
 import { Allotment } from "allotment";
-import { Loader2Icon } from "lucide-react";
+import { Loader2Icon, Settings2Icon } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 
 import { cn } from "@/lib/utils";
@@ -26,6 +26,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AiSettingsSheet } from "@/features/ai/components/ai-settings-sheet";
+import { useAiSettings } from "@/features/ai/provider/ai-settings-provider";
+import { PROVIDER_PRESETS } from "@/lib/ai-settings";
 
 import { Id } from "../../../../convex/_generated/dataModel";
 import { FileExplorer } from "./file-explorer";
@@ -66,9 +69,11 @@ export const ProjectIdView = ({
 
   const [activeView, setActiveView] = useState<"editor" | "preview">("editor");
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [exportRepoName, setExportRepoName] = useState("");
   const [isPrivateRepo, setIsPrivateRepo] = useState(true);
   const [isExportingRequest, setIsExportingRequest] = useState(false);
+  const { configuredSettings, isConfigured } = useAiSettings();
 
   const isExporting = isExportingRequest || project?.exportStatus === "exporting";
 
@@ -116,6 +121,8 @@ export const ProjectIdView = ({
 
   return (
     <>
+      <AiSettingsSheet open={aiSettingsOpen} onOpenChange={setAiSettingsOpen} />
+
       <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -173,6 +180,17 @@ export const ProjectIdView = ({
             onClick={() => setActiveView("preview")}
           />
           <div className="flex-1 flex justify-end h-full">
+            <button
+              className="flex items-center gap-1.5 h-full px-3 cursor-pointer text-muted-foreground border-l hover:bg-accent/30"
+              onClick={() => setAiSettingsOpen(true)}
+            >
+              <Settings2Icon className="size-3.5" />
+              <span className="text-sm">
+                {isConfigured
+                  ? PROVIDER_PRESETS[configuredSettings!.provider].label
+                  : "AI"}
+              </span>
+            </button>
             <button
               className="flex items-center gap-1.5 h-full px-3 cursor-pointer text-muted-foreground border-l hover:bg-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
               onClick={handleOpenExportDialog}
