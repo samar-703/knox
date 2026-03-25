@@ -1,10 +1,11 @@
-import { google } from "@ai-sdk/google";
 import { auth } from "@clerk/nextjs/server";
 import {generateText, Output} from "ai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { firecrawl } from "@/lib/firecrawl";
 import { createRateLimiter } from "@/lib/rate-limit";
+import { aiSettingsSchema } from "@/lib/ai-settings";
+import { getLanguageModel, resolveAiSettings } from "@/lib/ai-provider.server";
 
 
 
@@ -24,6 +25,7 @@ const quickEditRequestSchema = z.object({
   selectedCode: z.string().min(1).max(60_000),
   fullCode: z.string().max(180_000).optional().default(""),
   instruction: z.string().min(1).max(4_000),
+  providerConfig: aiSettingsSchema.optional(),
 });
 
 const isRateLimited = createRateLimiter({
@@ -80,7 +82,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid request payload" }, { status: 400 });
     }
 
-    const { selectedCode, fullCode, instruction } = parsed.data;
+    const { selectedCode, fullCode, instruction, providerConfig } = parsed.data;
+    const aiSettings = resolveAiSettings(providerConfig);
+
+    if (!aiSettings) {
+      return NextResponse.json(
+        { error: "AI provider not configured. Open the AI settings panel and add your API key." },
+        { status: 400 },
+      );
+    }
 
     const urls = Array.from(
       new Set((instruction.match(URL_REGEX) || []).slice(0, MAX_URLS)),
@@ -122,7 +132,7 @@ export async function POST(request: Request) {
       .replace("{documentation}", documentationContext);
 
     const { output } = await generateText({
-      model: google("gemini-2.0-flash"),
+      model: getLanguageModel(aiSettings, "chat"),
       output: Output.object({ schema: quickEditScheme }),
       prompt,
     });
