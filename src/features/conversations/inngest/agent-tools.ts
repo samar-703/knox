@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { RetrievedFile } from "./retrieval";
+import { RetrievedFile, searchWorkspaceFiles } from "./retrieval";
 
 const MAX_TOOL_OUTPUT_CHARS = 8_000;
 const DEFAULT_LIST_LIMIT = 40;
@@ -11,6 +11,7 @@ export type AgentToolName =
   | "list_files"
   | "read_file"
   | "search_files"
+  | "run_terminal_command"
   | "apply_instruction_to_file"
   | "create_file"
   | "delete_file";
@@ -31,6 +32,7 @@ export interface ToolExecutionHandlers {
     path: string;
     instruction: string;
   }) => Promise<string>;
+  runTerminalCommand: (args: { command: string }) => Promise<string>;
   createFile: (args: { path: string; content: string }) => Promise<string>;
   deleteFile: (args: { path: string }) => Promise<string>;
 }
@@ -83,6 +85,10 @@ const readFileArgsSchema = z.object({
 const searchFilesArgsSchema = z.object({
   query: z.string().min(1).max(200),
   limit: z.number().int().min(1).max(30).optional(),
+});
+
+const runTerminalCommandArgsSchema = z.object({
+  command: z.string().min(1).max(180),
 });
 
 const applyInstructionArgsSchema = z.object({
@@ -182,33 +188,29 @@ const runSearchFiles = (rawArgs: unknown, files: RetrievedFile[]) => {
   }
 
   const { query, limit } = parsed.data;
-  const queryLower = query.toLowerCase();
-  const results: string[] = [];
-
-  for (const file of files) {
-    if (results.length >= (limit ?? DEFAULT_SEARCH_LIMIT)) {
-      break;
-    }
-
-    const index = file.content.toLowerCase().indexOf(queryLower);
-    if (index === -1) {
-      continue;
-    }
-
-    const prefix = file.content.slice(0, index);
-    const line = prefix.split("\n").length;
-    const snippetStart = Math.max(0, index - 120);
-    const snippetEnd = Math.min(file.content.length, index + query.length + 120);
-    const snippet = file.content.slice(snippetStart, snippetEnd).replace(/\s+/g, " ");
-
-    results.push(`- ${file.path}:${line} -> ${snippet}`);
-  }
+  const results = searchWorkspaceFiles({
+    files,
+    query,
+    limit: limit ?? DEFAULT_SEARCH_LIMIT,
+  }).map((result) => `- ${result.path}:${result.line} -> ${result.snippet}`);
 
   if (results.length === 0) {
     return `No matches found for "${query}".`;
   }
 
   return `Search results for "${query}":\n${results.join("\n")}`;
+};
+
+const runTerminalCommand = async (
+  rawArgs: unknown,
+  handlers: ToolExecutionHandlers,
+) => {
+  const parsed = runTerminalCommandArgsSchema.safeParse(rawArgs);
+  if (!parsed.success) {
+    return `Invalid args for run_terminal_command: ${parsed.error.issues[0]?.message ?? "unknown error"}`;
+  }
+
+  return await handlers.runTerminalCommand(parsed.data);
 };
 
 const runApplyInstruction = async (
@@ -261,6 +263,9 @@ export const executeAgentTool = async ({
     case "search_files":
       output = runSearchFiles(rawArgs, files);
       break;
+    case "run_terminal_command":
+      output = await runTerminalCommand(rawArgs, handlers);
+      break;
     case "apply_instruction_to_file":
       output = await runApplyInstruction(rawArgs, handlers);
       break;
@@ -291,15 +296,19 @@ Available tools:
    args: { "query": string, "limit"?: number }
    use when you need to locate symbols/text quickly.
 
-4) apply_instruction_to_file
+4) run_terminal_command
+   args: { "command": string }
+   use for simple verification or safe workspace shell commands like tests, lint, build, pwd, ls, or find.
+
+5) apply_instruction_to_file
    args: { "path": string, "instruction": string }
    use when you need to modify an existing file.
 
-5) create_file
+6) create_file
    args: { "path": string, "content"?: string }
    use when you need to create a new file.
 
-6) delete_file
+7) delete_file
    args: { "path": string }
    use when you need to delete a file.
 `;
