@@ -187,7 +187,7 @@ export const createFile = mutation({
 
     const now = Date.now();
 
-    await ctx.db.insert("files", {
+    const fileId = await ctx.db.insert("files", {
       projectId: args.projectId,
       name: fileName,
       content: args.content,
@@ -199,6 +199,8 @@ export const createFile = mutation({
      await ctx.db.patch("projects", args.projectId, {
       updatedAt: now,
     });
+
+    return fileId;
   },
 });
 
@@ -417,4 +419,3 @@ export const updateFile = mutation({
     });
   },
 });
-
