@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:preview": "tsx src/lib/preview-server.ts",
+    "companion": "tsx src/companion/server.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
