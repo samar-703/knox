@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import React, { useState } from "react";
-import { CloudCheckIcon, LoaderIcon } from "lucide-react";
+import { CloudCheckIcon, LoaderIcon, PlugZapIcon } from "lucide-react";
 import { UserButton } from "@clerk/nextjs";
 import { formatDistanceToNow } from "date-fns";
 import { Poppins } from "next/font/google";
@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useCompanion } from "@/features/companion/provider/companion-provider";
+import { ProjectCompanionDialog } from "@/features/companion/components/project-companion-dialog";
 
 
 import { Id } from "..//..//..//..//convex/_generated/dataModel";
@@ -44,9 +46,11 @@ export const Navbar = ({
 }) => {
   const project = useProject(projectId);
   const renameProject = useRenameProject();
+  const { connectionState } = useCompanion();
 
   const [isRenaming, setIsRenaming] = useState(false);
   const [name, setName] = useState("");
+  const [companionOpen, setCompanionOpen] = useState(false);
 
   const handleStartRename = () => {
     if (!project) return;
@@ -74,8 +78,15 @@ export const Navbar = ({
 
 
   return (
-    <nav className="flex justify-between items-center gap-x-2 p-2 bg-sidebar border-b">
-      <div className="flex items-center gap-x-2 ">
+    <>
+      <ProjectCompanionDialog
+        open={companionOpen}
+        onOpenChange={setCompanionOpen}
+        projectId={projectId}
+      />
+
+      <nav className="flex justify-between items-center gap-x-2 p-2 bg-sidebar border-b">
+        <div className="flex items-center gap-x-2 ">
         <Breadcrumb>
           <BreadcrumbList className="gap-0!">
             <BreadcrumbItem>
@@ -152,10 +163,20 @@ export const Navbar = ({
           </Tooltip>
           )
         )}
-      </div>
-      <div className="flex items-center gap-2">
-        <UserButton />
-      </div>
-    </nav>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setCompanionOpen(true)}
+          >
+            <PlugZapIcon className="size-4" />
+            {connectionState === "connected" ? "Companion" : "Connect"}
+          </Button>
+          <UserButton />
+        </div>
+      </nav>
+    </>
   )
 };

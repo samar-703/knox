@@ -15,6 +15,7 @@ import { UnauthenticatedView } from "@/features/auth/components/unauthenticated-
 import { ThemeProvider } from "./theme-provider";
 import { AuthLoadingView } from "@/features/auth/components/auth-loading-view";
 import { AiSettingsProvider } from "@/features/ai/provider/ai-settings-provider";
+import { CompanionProvider } from "@/features/companion/provider/companion-provider";
 
 
 const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
@@ -30,7 +31,9 @@ export const Providers = ({ children }: { children: React.ReactNode }) => {
           disableTransitionOnChange
         >
           <Authenticated>
-            <AiSettingsProvider>{children}</AiSettingsProvider>
+            <CompanionProvider>
+              <AiSettingsProvider>{children}</AiSettingsProvider>
+            </CompanionProvider>
           </Authenticated>
           <Unauthenticated>
             <UnauthenticatedView />
