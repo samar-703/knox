@@ -27,6 +27,7 @@ interface MessageEvent {
   conversationId: Id<"conversations">;
   userId: string;
   encryptedAiSettings?: string | null;
+  mode?: "ask" | "plan" | "fast";
 }
 
 const MAX_CONTEXT_MESSAGES = 12;
@@ -402,6 +403,34 @@ export const processMessage = inngest.createFunction(
     let finalResponse: string | null = null;
     let terminalCommandsUsed = 0;
 
+    // Handle Ask Mode - just answer questions without using tools
+    if (event.data.mode === "ask") {
+      const askResponse = await step.run("ask-mode-response", async () => {
+        const askPrompt = `${SYSTEM_PROMPT}
+
+You are in "Ask Mode". Your job is to answer questions and provide information about the code, but DO NOT write or modify any files. You can read and search files to provide accurate answers, but you should not make any changes.
+
+${conversationContext}
+
+${codebaseContext}
+
+${repoRulesContext}
+
+User's question: ${latestUserMessage.content}
+
+Provide a helpful, accurate answer based on the codebase context above. Do not offer to make changes or write code unless explicitly asked.`;
+
+        const { text } = await generateText({
+          model: getLanguageModel(aiSettings, "chat"),
+          prompt: askPrompt,
+          maxOutputTokens: 4000,
+        });
+        return text;
+      });
+
+      finalResponse = askResponse;
+    } else {
+
     const toolHandlers = {
       runTerminalCommand: async ({ command }: { command: string }) => {
         if (terminalCommandsUsed >= MAX_TERMINAL_COMMANDS) {
@@ -727,6 +756,7 @@ ${originalContent}
 
       finalResponse = text.trim();
     }
+    } // End of else block for non-ask modes
 
     const safeText =
       (finalResponse && finalResponse.trim()) ||
