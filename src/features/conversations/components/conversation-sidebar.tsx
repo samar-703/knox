@@ -8,6 +8,9 @@ import {
   LoaderIcon,
   PlusIcon,
   XIcon,
+  LightbulbIcon,
+  MessageCircleIcon,
+  ZapIcon,
 } from "lucide-react";
 
 import {
@@ -125,6 +128,26 @@ const ConversationPromptTools = ({
   );
 };
 
+type ChatMode = "ask" | "plan" | "fast";
+
+const MODE_CONFIG: Record<ChatMode, { label: string; icon: React.ReactNode; description: string }> = {
+  ask: {
+    label: "Ask",
+    icon: <MessageCircleIcon className="size-3.5" />,
+    description: "Ask questions and get answers",
+  },
+  plan: {
+    label: "Plan",
+    icon: <LightbulbIcon className="size-3.5" />,
+    description: "Plan before coding",
+  },
+  fast: {
+    label: "Fast",
+    icon: <ZapIcon className="size-3.5" />,
+    description: "Quick code generation",
+  },
+};
+
 interface ConversationSidebarProps {
   projectId: Id<"projects">;
 }
@@ -137,6 +160,7 @@ export const ConversationSidebar = ({
     useState<Id<"conversations"> | null>(null);
   const [pastConversationsOpen, setPastConversationsOpen] = useState(false);
   const [hasPendingAttachments, setHasPendingAttachments] = useState(false);
+  const [chatMode, setChatMode] = useState<ChatMode>("ask");
   const { configuredSettings } = useAiSettings();
 
   const createConversation = useCreateConversation();
@@ -262,6 +286,7 @@ export const ConversationSidebar = ({
           message: message.text,
           attachments: message.files,
           providerConfig: configuredSettings ?? undefined,
+          mode: chatMode,
         },
       });
     } catch (error) {
@@ -390,6 +415,24 @@ export const ConversationSidebar = ({
           <ConversationScrollButton />
         </Conversation>
         <div className="p-3">
+          {/* Mode Selector */}
+          <div className="flex items-center gap-1 mb-2 px-1">
+            {(Object.keys(MODE_CONFIG) as ChatMode[]).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setChatMode(mode)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                  chatMode === mode
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-accent"
+                }`}
+                title={MODE_CONFIG[mode].description}
+              >
+                {MODE_CONFIG[mode].icon}
+                {MODE_CONFIG[mode].label}
+              </button>
+            ))}
+          </div>
           <PromptInput
             onSubmit={handleSubmit}
             className="mt-2"
@@ -403,7 +446,7 @@ export const ConversationSidebar = ({
                 onHasAttachmentsChange={setHasPendingAttachments}
               />
               <PromptInputTextarea
-                placeholder="Ask Knox anything..."
+                placeholder={chatMode === "ask" ? "Ask anything about your code..." : chatMode === "plan" ? "Describe what you want to build..." : "Describe the code you need..."}
                 onChange={(e) => setInput(e.target.value)}
                 value={input}
                 disabled={isProcessing}
