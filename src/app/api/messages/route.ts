@@ -34,6 +34,7 @@ const requestSchema = z.object({
     .optional()
     .default([]),
   providerConfig: aiSettingsSchema.optional(),
+  mode: z.enum(["ask", "plan", "fast"]).optional().default("fast"),
 });
 
 const isRateLimited = createRateLimiter({
@@ -70,7 +71,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request payload" }, { status: 400 });
   }
 
-  const { conversationId, message, attachments, providerConfig } = parsed.data;
+  const { conversationId, message, attachments, providerConfig, mode } = parsed.data;
   const trimmedMessage = message.trim();
   if (!trimmedMessage && attachments.length === 0) {
     return NextResponse.json(
@@ -151,6 +152,7 @@ export async function POST(request: Request) {
       conversationId: conversationIdTyped,
       userId,
       encryptedAiSettings,
+      mode,
     },
   });
 
