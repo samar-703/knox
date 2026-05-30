@@ -90,7 +90,7 @@ export const AiSettingsSheet = ({
     const parsed = aiSettingsSchema.safeParse(normalizedDraft);
 
     if (!parsed.success) {
-      toast.error("Fill in provider, API key, and chat model before saving.");
+      toast.error("Fill in provider APIs and chat model before saving.");
       return;
     }
 
