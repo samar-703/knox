@@ -34,3 +34,5 @@ This project is in development
 
 This AI coding IDE now supports external APIs and service provider integration
 Now you can connect your service provider and boom it's coding time
+
+opencode is better for now
