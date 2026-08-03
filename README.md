@@ -32,6 +32,5 @@ This project is in development
 ## Update 
 
 This AI coding IDE now supports external APIs and service provider integration
-Now you can connect your service provider and boom it's coding time
-Supports different modes of coding
+Now you can connect your service provider for api biilling through openrouter
 
