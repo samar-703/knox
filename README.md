@@ -1,5 +1,5 @@
 Knox- AI agent IDE
-Will be opensource soon
+Will be open-source soon
 
 ## Getting Started
 
