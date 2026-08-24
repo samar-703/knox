@@ -1,6 +1,6 @@
 Knox- AI agent IDE
 Will be open-source soon
-
+Including harness
 ## Getting Started
 
 First, run the development server:
