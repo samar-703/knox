@@ -29,7 +29,7 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 This project is in development 
 
-## Update 
+## Updated system
 
 This AI coding IDE now supports external APIs and service provider integration
 Now you can connect your service provider for api billing through openrouter
