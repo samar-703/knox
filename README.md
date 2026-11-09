@@ -2,7 +2,7 @@ Knox- AI agent IDE
 Will be open-source soon
 ## Follow the steps below
 
-First, run the development server:
+First, run the development server
 
 ```bash
 npm run dev
