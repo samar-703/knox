@@ -1,5 +1,5 @@
-Knox- AI agent IDE
-Will be open-source soon
+Knox - AI agent
+All in one Harness
 ## Follow the steps below
 
 First, run the development server
